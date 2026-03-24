@@ -289,6 +289,14 @@ private struct ClaudeSessionDayAccumulator {
     var lastModel: String?
 }
 
+private struct GeminiSessionDayAccumulator {
+    var sessionIDs: Set<String> = []
+    var timestamps: [Date] = []
+    var tokenUsage = 0
+    var toolCalls = 0
+    var lastModel: String?
+}
+
 struct ClaudeUsageSnapshotBuilder: Sendable {
     private let projectsRoot: URL
     private let calendar: Calendar
@@ -365,9 +373,7 @@ struct ClaudeUsageSnapshotBuilder: Sendable {
         let today = daily.last ?? .empty(for: calendar.startOfDay(for: now))
         let status = AgentStatusSummary(
             primaryLabel: "今日 Token",
-            primaryValue: CompactNumberFormatter.string(for: today.tokenUsage),
-            secondaryLabel: "工具调用",
-            secondaryValue: "\(today.toolCalls)"
+            primaryValue: CompactNumberFormatter.string(for: today.tokenUsage)
         )
 
         return AgentSnapshot(
@@ -421,17 +427,287 @@ struct ClaudeUsageSnapshotBuilder: Sendable {
 }
 
 struct GeminiUsageSnapshotBuilder: Sendable {
-    private let homeDirectory: URL
+    private let logsRoot: URL
+    private let settingsURL: URL
     private let calendar: Calendar
 
     init(homeDirectory: URL, calendar: Calendar) {
-        self.homeDirectory = homeDirectory
+        self.logsRoot = homeDirectory.appending(path: ".gemini/tmp", directoryHint: .isDirectory)
+        self.settingsURL = homeDirectory.appending(path: ".gemini/settings.json")
+        self.calendar = calendar
+    }
+
+    init(logsRoot: URL, settingsURL: URL, calendar: Calendar) {
+        self.logsRoot = logsRoot
+        self.settingsURL = settingsURL
         self.calendar = calendar
     }
 
     func build(now: Date = .now) throws -> AgentSnapshot {
-        let dataSource = homeDirectory.appending(path: ".gemini").path
-        return AgentSnapshot.empty(agent: .gemini, generatedAt: now, runtimeLabel: "Gemini CLI", dataSourceLabel: dataSource)
+        let dataSourceLabel = logsRoot.path
+        guard FileManager.default.fileExists(atPath: logsRoot.path) else {
+            return AgentSnapshot.empty(agent: .gemini, generatedAt: now, runtimeLabel: "Gemini CLI", dataSourceLabel: dataSourceLabel)
+        }
+
+        var accumulators: [Date: GeminiSessionDayAccumulator] = [:]
+        var currentModel: String?
+        var lastActiveAt: Date?
+
+        let enumerator = FileManager.default.enumerator(
+            at: logsRoot,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        )
+
+        while let fileURL = enumerator?.nextObject() as? URL {
+            if fileURL.pathComponents.contains("chats"), fileURL.pathExtension == "json" {
+                guard let content = try? Data(contentsOf: fileURL) else { continue }
+                guard let chat = try? JSONSerialization.jsonObject(with: content) as? [String: Any] else { continue }
+                ingestChatSession(
+                    chat,
+                    into: &accumulators,
+                    currentModel: &currentModel,
+                    lastActiveAt: &lastActiveAt
+                )
+                continue
+            }
+        }
+
+        if accumulators.isEmpty {
+            let fallbackEnumerator = FileManager.default.enumerator(
+                at: logsRoot,
+                includingPropertiesForKeys: [.isRegularFileKey],
+                options: [.skipsHiddenFiles]
+            )
+
+            while let fileURL = fallbackEnumerator?.nextObject() as? URL {
+                guard fileURL.lastPathComponent == "logs.json" else { continue }
+                guard let content = try? Data(contentsOf: fileURL) else { continue }
+                guard let items = try? JSONSerialization.jsonObject(with: content) as? [[String: Any]] else { continue }
+
+                for item in items {
+                    ingestLogItem(
+                        item,
+                        into: &accumulators,
+                        currentModel: &currentModel,
+                        lastActiveAt: &lastActiveAt
+                    )
+                }
+            }
+        }
+
+        let daily = buildDailyMetrics(from: accumulators, now: now)
+        let today = daily.last ?? .empty(for: calendar.startOfDay(for: now))
+        let status = AgentStatusSummary(
+            primaryLabel: "今日 Token",
+            primaryValue: CompactNumberFormatter.string(for: today.tokenUsage)
+        )
+
+        return AgentSnapshot(
+            agent: .gemini,
+            generatedAt: now,
+            status: status,
+            today: today,
+            lastSevenDays: Array(daily.suffix(7)),
+            lastYearDays: daily,
+            currentModel: currentModel,
+            lastActiveAt: lastActiveAt,
+            environment: AgentEnvironmentSummary(
+                runtimeLabel: "Gemini CLI",
+                authLabel: geminiAuthLabel(),
+                currentModel: currentModel,
+                dataSourceLabel: dataSourceLabel,
+                updatedAt: now
+            ),
+            isAvailable: accumulators.isEmpty == false
+        )
+    }
+
+    private func ingestChatSession(
+        _ chat: [String: Any],
+        into accumulators: inout [Date: GeminiSessionDayAccumulator],
+        currentModel: inout String?,
+        lastActiveAt: inout Date?
+    ) {
+        guard let sessionID = chat["sessionId"] as? String, !sessionID.isEmpty else { return }
+        guard let messages = chat["messages"] as? [[String: Any]] else { return }
+
+        for message in messages {
+            guard
+                let timestampString = message["timestamp"] as? String,
+                let timestamp = ISO8601DateParser.parse(timestampString)
+            else {
+                continue
+            }
+
+            let day = calendar.startOfDay(for: timestamp)
+            var accumulator = accumulators[day] ?? GeminiSessionDayAccumulator()
+            accumulator.timestamps.append(timestamp)
+            accumulator.sessionIDs.insert(sessionID)
+            lastActiveAt = max(lastActiveAt ?? timestamp, timestamp)
+
+            if let model = extractModel(from: message), !model.isEmpty {
+                accumulator.lastModel = model
+                currentModel = model
+            }
+
+            accumulator.tokenUsage += extractTokenUsage(from: message)
+            accumulator.toolCalls += extractToolCalls(from: message)
+            accumulators[day] = accumulator
+        }
+    }
+
+    private func ingestLogItem(
+        _ item: [String: Any],
+        into accumulators: inout [Date: GeminiSessionDayAccumulator],
+        currentModel: inout String?,
+        lastActiveAt: inout Date?
+    ) {
+        guard
+            let timestampString = item["timestamp"] as? String,
+            let timestamp = ISO8601DateParser.parse(timestampString)
+        else {
+            return
+        }
+
+        let day = calendar.startOfDay(for: timestamp)
+        var accumulator = accumulators[day] ?? GeminiSessionDayAccumulator()
+        accumulator.timestamps.append(timestamp)
+        lastActiveAt = max(lastActiveAt ?? timestamp, timestamp)
+
+        if let sessionID = item["sessionId"] as? String, !sessionID.isEmpty {
+            accumulator.sessionIDs.insert(sessionID)
+        }
+
+        if let model = extractModel(from: item), !model.isEmpty {
+            accumulator.lastModel = model
+            currentModel = model
+        }
+
+        accumulator.tokenUsage += extractTokenUsage(from: item)
+        accumulator.toolCalls += extractToolCalls(from: item)
+        accumulators[day] = accumulator
+    }
+
+    private func buildDailyMetrics(from accumulators: [Date: GeminiSessionDayAccumulator], now: Date) -> [UsageMetricsDay] {
+        let startOfToday = calendar.startOfDay(for: now)
+        return (0..<365).map { offset in
+            let date = calendar.date(byAdding: .day, value: offset - 364, to: startOfToday) ?? startOfToday
+            let accumulator = accumulators[date] ?? GeminiSessionDayAccumulator()
+            let sessionCount = accumulator.sessionIDs.count
+            let activeMinutes = ActivityTimelineCalculator.activeMinutes(for: accumulator.timestamps)
+            let score = ClaudeActivityScoreCalculator.score(
+                sessions: sessionCount,
+                activeMinutes: activeMinutes,
+                tokenUsage: accumulator.tokenUsage,
+                toolCalls: accumulator.toolCalls
+            )
+            return UsageMetricsDay(
+                date: date,
+                dialogs: sessionCount,
+                activeMinutes: activeMinutes,
+                modifiedFiles: 0,
+                addedLines: 0,
+                deletedLines: 0,
+                tokenUsage: accumulator.tokenUsage,
+                toolCalls: accumulator.toolCalls,
+                customActivityScore: score,
+                interactionLabel: "会话",
+                sourceAgents: score > 0 ? [AgentKind.gemini.displayName] : []
+            )
+        }
+    }
+
+    private func geminiAuthLabel() -> String? {
+        guard let data = try? Data(contentsOf: settingsURL) else { return nil }
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        guard
+            let security = json["security"] as? [String: Any],
+            let auth = security["auth"] as? [String: Any],
+            let selectedType = auth["selectedType"] as? String,
+            !selectedType.isEmpty
+        else {
+            return nil
+        }
+        return selectedType
+    }
+
+    private func extractModel(from item: [String: Any]) -> String? {
+        if let model = item["model"] as? String {
+            return model
+        }
+        if let message = item["message"] as? [String: Any],
+           let model = message["model"] as? String {
+            return model
+        }
+        return nil
+    }
+
+    private func extractTokenUsage(from item: [String: Any]) -> Int {
+        if let tokens = item["tokens"] as? [String: Any] {
+            let totalTokens = intValue(in: tokens, keys: ["total"])
+            if totalTokens > 0 { return totalTokens }
+            let inputTokens = intValue(in: tokens, keys: ["input"])
+            let outputTokens = intValue(in: tokens, keys: ["output"])
+            let thoughtTokens = intValue(in: tokens, keys: ["thoughts"])
+            let toolTokens = intValue(in: tokens, keys: ["tool"])
+            let cachedTokens = intValue(in: tokens, keys: ["cached"])
+            let sum = inputTokens + outputTokens + thoughtTokens + toolTokens + cachedTokens
+            if sum > 0 { return sum }
+        }
+        let sources = [item["usage"], (item["message"] as? [String: Any])?["usage"]]
+        for source in sources {
+            guard let usage = source as? [String: Any] else { continue }
+            let inputTokens = intValue(in: usage, keys: ["input_tokens", "inputTokens", "prompt_tokens", "promptTokenCount"])
+            let outputTokens = intValue(in: usage, keys: ["output_tokens", "outputTokens", "completion_tokens", "candidatesTokenCount"])
+            let totalTokens = intValue(in: usage, keys: ["total_tokens", "totalTokens", "totalTokenCount"])
+            let sum = inputTokens + outputTokens
+            if sum > 0 { return sum }
+            if totalTokens > 0 { return totalTokens }
+        }
+        return 0
+    }
+
+    private func extractToolCalls(from item: [String: Any]) -> Int {
+        if let type = item["type"] as? String,
+           type == "tool" || type == "tool_use" || type == "function_call" {
+            return 1
+        }
+        if let type = item["type"] as? String,
+           type == "gemini" || type == "assistant",
+           let tools = item["tools"] as? [[String: Any]] {
+            return tools.count
+        }
+        if let message = item["message"] as? [String: Any] {
+            if let content = message["content"] as? [[String: Any]] {
+                return content.filter {
+                    guard let type = $0["type"] as? String else { return false }
+                    return type == "tool_use" || type == "tool" || type == "function_call"
+                }.count
+            }
+            if message["toolCalls"] != nil || message["tool_calls"] != nil {
+                return max(
+                    intValue(in: message, keys: ["toolCalls"]),
+                    intValue(in: message, keys: ["tool_calls"])
+                )
+            }
+        }
+        return 0
+    }
+
+    private func intValue(in dictionary: [String: Any], keys: [String]) -> Int {
+        for key in keys {
+            if let value = dictionary[key] as? Int {
+                return value
+            }
+            if let value = dictionary[key] as? Double {
+                return Int(value)
+            }
+            if let value = dictionary[key] as? String, let int = Int(value) {
+                return int
+            }
+        }
+        return 0
     }
 }
 

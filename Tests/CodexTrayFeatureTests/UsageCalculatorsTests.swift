@@ -9,6 +9,75 @@ final class UsageCalculatorsTests: XCTestCase {
         XCTAssertEqual(HeatmapLevelCalculator.level(for: 1000), 4)
     }
 
+    func testAgentPanelLayoutPolicyShowsProgressBarOnlyForCodex() {
+        XCTAssertTrue(AgentPanelLayoutPolicy.showsProgressBar(for: .codex))
+        XCTAssertFalse(AgentPanelLayoutPolicy.showsProgressBar(for: .claude))
+        XCTAssertFalse(AgentPanelLayoutPolicy.showsProgressBar(for: .gemini))
+    }
+
+    func testAgentPanelLayoutPolicyUsesCompactStatusTitleForNonCodexAgents() {
+        XCTAssertEqual(AgentPanelLayoutPolicy.statusTitle(for: .codex), "配额 / 状态")
+        XCTAssertEqual(AgentPanelLayoutPolicy.statusTitle(for: .claude), "状态")
+        XCTAssertEqual(AgentPanelLayoutPolicy.statusTitle(for: .gemini), "状态")
+    }
+
+    func testAgentPanelLayoutPolicyUsesDifferentTodayMetricsForClaudeAndGemini() {
+        XCTAssertEqual(AgentPanelLayoutPolicy.todayMetrics(for: .claude), [.sessions, .activeMinutes, .toolCalls])
+        XCTAssertEqual(AgentPanelLayoutPolicy.todayMetrics(for: .gemini), [.sessions, .activeMinutes, .avgTokensPerSession])
+    }
+
+    func testAgentPanelLayoutPolicyFormatsHeaderStatusWithTodayTokenForGemini() {
+        let snapshot = AgentSnapshot(
+            agent: .gemini,
+            generatedAt: .now,
+            status: AgentStatusSummary(primaryLabel: "今日会话", primaryValue: "3"),
+            today: UsageMetricsDay(
+                date: .now,
+                dialogs: 3,
+                activeMinutes: 12,
+                modifiedFiles: 0,
+                addedLines: 0,
+                deletedLines: 0,
+                tokenUsage: 14_272,
+                toolCalls: 2
+            ),
+            lastSevenDays: [],
+            lastYearDays: [],
+            currentModel: "gemini-2.5-pro",
+            lastActiveAt: .now,
+            environment: AgentEnvironmentSummary(runtimeLabel: "Gemini CLI", dataSourceLabel: "~/.gemini"),
+            isAvailable: true
+        )
+
+        XCTAssertEqual(AgentPanelLayoutPolicy.headerStatusText(for: snapshot), "Token 14.3K")
+    }
+
+    func testAgentPanelLayoutPolicyFormatsAverageTokensPerSessionForGemini() {
+        let snapshot = AgentSnapshot(
+            agent: .gemini,
+            generatedAt: .now,
+            status: AgentStatusSummary(primaryLabel: "今日 Token", primaryValue: "14.3K"),
+            today: UsageMetricsDay(
+                date: .now,
+                dialogs: 4,
+                activeMinutes: 12,
+                modifiedFiles: 0,
+                addedLines: 0,
+                deletedLines: 0,
+                tokenUsage: 14_400,
+                toolCalls: 2
+            ),
+            lastSevenDays: [],
+            lastYearDays: [],
+            currentModel: "gemini-2.5-pro",
+            lastActiveAt: .now,
+            environment: AgentEnvironmentSummary(runtimeLabel: "Gemini CLI", dataSourceLabel: "~/.gemini"),
+            isAvailable: true
+        )
+
+        XCTAssertEqual(AgentPanelLayoutPolicy.averageTokensPerSessionText(for: snapshot), "3.6K")
+    }
+
     func testActivityTimelineMergesNearbyEventsIntoOneSession() {
         let base = Date(timeIntervalSince1970: 1_700_000_000)
         let timestamps = [
