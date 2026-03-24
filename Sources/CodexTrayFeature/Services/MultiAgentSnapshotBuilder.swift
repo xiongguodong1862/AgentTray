@@ -371,9 +371,12 @@ struct ClaudeUsageSnapshotBuilder: Sendable {
 
         let daily = buildDailyMetrics(from: accumulators, now: now)
         let today = daily.last ?? .empty(for: calendar.startOfDay(for: now))
+        let totalTokenUsage = accumulators.values.reduce(0) { $0 + $1.tokenUsage }
         let status = AgentStatusSummary(
             primaryLabel: "今日 Token",
-            primaryValue: CompactNumberFormatter.string(for: today.tokenUsage)
+            primaryValue: CompactNumberFormatter.string(for: today.tokenUsage),
+            secondaryLabel: "累计 Token",
+            secondaryValue: CompactNumberFormatter.string(for: totalTokenUsage)
         )
 
         return AgentSnapshot(
@@ -498,9 +501,12 @@ struct GeminiUsageSnapshotBuilder: Sendable {
 
         let daily = buildDailyMetrics(from: accumulators, now: now)
         let today = daily.last ?? .empty(for: calendar.startOfDay(for: now))
+        let totalTokenUsage = accumulators.values.reduce(0) { $0 + $1.tokenUsage }
         let status = AgentStatusSummary(
             primaryLabel: "今日 Token",
-            primaryValue: CompactNumberFormatter.string(for: today.tokenUsage)
+            primaryValue: CompactNumberFormatter.string(for: today.tokenUsage),
+            secondaryLabel: "累计 Token",
+            secondaryValue: CompactNumberFormatter.string(for: totalTokenUsage)
         )
 
         return AgentSnapshot(

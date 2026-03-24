@@ -323,22 +323,13 @@ struct PanelRootView: View {
                 .tracking(1.3)
                 .foregroundStyle(.white.opacity(0.42))
 
-            usageRow(
-                label: snapshot.status.primaryLabel,
-                value: snapshot.status.primaryValue,
-                remainingPercent: snapshot.status.primaryProgress.map { $0 * 100 },
-                resetHint: nil,
-                showsProgressBar: AgentPanelLayoutPolicy.showsProgressBar(for: snapshot.agent)
-            )
-
-            if let secondaryLabel = snapshot.status.secondaryLabel,
-               let secondaryValue = snapshot.status.secondaryValue {
+            ForEach(statusRows(for: snapshot)) { row in
                 usageRow(
-                    label: secondaryLabel,
-                    value: secondaryValue,
-                    remainingPercent: snapshot.status.secondaryProgress.map { $0 * 100 },
+                    label: row.label,
+                    value: row.value,
+                    remainingPercent: row.remainingPercent,
                     resetHint: nil,
-                    showsProgressBar: AgentPanelLayoutPolicy.showsProgressBar(for: snapshot.agent)
+                    showsProgressBar: row.showsProgressBar
                 )
             }
         }
@@ -497,11 +488,73 @@ struct PanelRootView: View {
         }
     }
 
+    private func statusRows(for snapshot: AgentSnapshot) -> [StatusRow] {
+        switch snapshot.agent {
+        case .codex:
+            var rows = [
+                StatusRow(
+                    label: snapshot.status.primaryLabel,
+                    value: snapshot.status.primaryValue,
+                    remainingPercent: snapshot.status.primaryProgress.map { $0 * 100 },
+                    showsProgressBar: true
+                )
+            ]
+            if let secondaryLabel = snapshot.status.secondaryLabel,
+               let secondaryValue = snapshot.status.secondaryValue {
+                rows.append(
+                    StatusRow(
+                        label: secondaryLabel,
+                        value: secondaryValue,
+                        remainingPercent: snapshot.status.secondaryProgress.map { $0 * 100 },
+                        showsProgressBar: true
+                    )
+                )
+            }
+            return rows
+        case .claude, .gemini:
+            var rows = [
+                StatusRow(
+                    label: "近7天平均会话 Token",
+                    value: AgentPanelLayoutPolicy.recentAverageTokensPerSessionText(for: snapshot),
+                    remainingPercent: nil,
+                    showsProgressBar: false
+                )
+            ]
+            if let secondaryLabel = snapshot.status.secondaryLabel,
+               let secondaryValue = snapshot.status.secondaryValue {
+                rows.append(
+                    StatusRow(
+                        label: secondaryLabel,
+                        value: secondaryValue,
+                        remainingPercent: nil,
+                        showsProgressBar: false
+                    )
+                )
+            }
+            return rows
+        case .all:
+            return [
+                StatusRow(
+                    label: snapshot.status.primaryLabel,
+                    value: snapshot.status.primaryValue,
+                    remainingPercent: nil,
+                    showsProgressBar: false
+                )
+            ]
+        }
+    }
+
     private func metricRow(for metric: AgentTodayMetric, snapshot: AgentSnapshot) -> MetricRow {
         switch metric {
         case .sessions:
             let label = snapshot.agent == .all ? "总会话数" : (snapshot.agent == .codex ? "对话数" : "今日会话")
             let value = snapshot.agent == .all ? "\(store.multiAgentSnapshot.todaySummary.totalSessions)" : "\(snapshot.today.dialogs)"
+            return MetricRow(label: label, value: value, valueColor: .white)
+        case .tokenUsage:
+            let label = snapshot.agent == .all ? "总 Token" : "今日 Token"
+            let value = snapshot.agent == .all
+                ? UsageNumberFormatter.compactCount(store.multiAgentSnapshot.todaySummary.totalTokenUsage)
+                : UsageNumberFormatter.compactCount(snapshot.today.tokenUsage)
             return MetricRow(label: label, value: value, valueColor: .white)
         case .activeMinutes:
             let label = snapshot.agent == .all ? "总活跃时长" : "活跃时长"
@@ -513,12 +566,12 @@ struct PanelRootView: View {
                 value: UsageDisplayFormatter.netChangeLabel(for: snapshot.today.netLines),
                 valueColor: .white
             )
-        case .tokenUsage:
-            let label = snapshot.agent == .all ? "总 Token" : "今日 Token"
-            let value = snapshot.agent == .all
-                ? UsageNumberFormatter.compactCount(store.multiAgentSnapshot.todaySummary.totalTokenUsage)
-                : UsageNumberFormatter.compactCount(snapshot.today.tokenUsage)
-            return MetricRow(label: label, value: value, valueColor: .white)
+        case .modifiedFiles:
+            return MetricRow(
+                label: "改动文件",
+                value: "\(snapshot.today.modifiedFiles)",
+                valueColor: .white
+            )
         case .toolCalls:
             let value = snapshot.agent == .all ? "\(store.multiAgentSnapshot.todaySummary.totalToolCalls)" : "\(snapshot.today.toolCalls)"
             return MetricRow(label: "工具调用", value: value, valueColor: .white)
@@ -760,10 +813,19 @@ struct MetricRow: Identifiable {
     let valueColor: Color
 }
 
+struct StatusRow: Identifiable {
+    let id = UUID()
+    let label: String
+    let value: String
+    let remainingPercent: Double?
+    let showsProgressBar: Bool
+}
+
 enum AgentTodayMetric: Equatable {
     case sessions
     case activeMinutes
     case netChange
+    case modifiedFiles
     case tokenUsage
     case toolCalls
     case avgTokensPerSession
@@ -771,7 +833,7 @@ enum AgentTodayMetric: Equatable {
 
 enum AgentPanelLayoutPolicy {
     static func statusTitle(for agent: AgentKind) -> String {
-        agent == .codex ? "配额 / 状态" : "状态"
+        agent == .codex ? "配额 / 状态" : "使用情况"
     }
 
     static func showsProgressBar(for agent: AgentKind) -> Bool {
@@ -781,11 +843,11 @@ enum AgentPanelLayoutPolicy {
     static func todayMetrics(for agent: AgentKind) -> [AgentTodayMetric] {
         switch agent {
         case .codex:
-            [.sessions, .activeMinutes, .netChange]
+            [.sessions, .activeMinutes, .modifiedFiles]
         case .claude:
-            [.sessions, .activeMinutes, .toolCalls]
+            [.sessions, .tokenUsage, .activeMinutes]
         case .gemini:
-            [.sessions, .activeMinutes, .avgTokensPerSession]
+            [.sessions, .tokenUsage, .activeMinutes]
         case .all:
             [.sessions, .activeMinutes, .tokenUsage]
         }
@@ -806,6 +868,13 @@ enum AgentPanelLayoutPolicy {
         guard snapshot.today.dialogs > 0 else { return "--" }
         let average = snapshot.today.tokenUsage / max(1, snapshot.today.dialogs)
         return UsageNumberFormatter.compactCount(average)
+    }
+
+    static func recentAverageTokensPerSessionText(for snapshot: AgentSnapshot) -> String {
+        let totalDialogs = snapshot.lastSevenDays.reduce(0) { $0 + $1.dialogs }
+        guard totalDialogs > 0 else { return "--" }
+        let totalTokens = snapshot.lastSevenDays.reduce(0) { $0 + $1.tokenUsage }
+        return UsageNumberFormatter.compactCount(totalTokens / totalDialogs)
     }
 }
 

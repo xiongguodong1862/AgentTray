@@ -17,13 +17,14 @@ final class UsageCalculatorsTests: XCTestCase {
 
     func testAgentPanelLayoutPolicyUsesCompactStatusTitleForNonCodexAgents() {
         XCTAssertEqual(AgentPanelLayoutPolicy.statusTitle(for: .codex), "配额 / 状态")
-        XCTAssertEqual(AgentPanelLayoutPolicy.statusTitle(for: .claude), "状态")
-        XCTAssertEqual(AgentPanelLayoutPolicy.statusTitle(for: .gemini), "状态")
+        XCTAssertEqual(AgentPanelLayoutPolicy.statusTitle(for: .claude), "使用情况")
+        XCTAssertEqual(AgentPanelLayoutPolicy.statusTitle(for: .gemini), "使用情况")
     }
 
     func testAgentPanelLayoutPolicyUsesDifferentTodayMetricsForClaudeAndGemini() {
-        XCTAssertEqual(AgentPanelLayoutPolicy.todayMetrics(for: .claude), [.sessions, .activeMinutes, .toolCalls])
-        XCTAssertEqual(AgentPanelLayoutPolicy.todayMetrics(for: .gemini), [.sessions, .activeMinutes, .avgTokensPerSession])
+        XCTAssertEqual(AgentPanelLayoutPolicy.todayMetrics(for: .claude), [.sessions, .tokenUsage, .activeMinutes])
+        XCTAssertEqual(AgentPanelLayoutPolicy.todayMetrics(for: .gemini), [.sessions, .tokenUsage, .activeMinutes])
+        XCTAssertEqual(AgentPanelLayoutPolicy.todayMetrics(for: .codex), [.sessions, .activeMinutes, .modifiedFiles])
     }
 
     func testAgentPanelLayoutPolicyFormatsHeaderStatusWithTodayTokenForGemini() {
@@ -76,6 +77,42 @@ final class UsageCalculatorsTests: XCTestCase {
         )
 
         XCTAssertEqual(AgentPanelLayoutPolicy.averageTokensPerSessionText(for: snapshot), "3.6K")
+    }
+
+    func testAgentPanelLayoutPolicyFormatsRecentAverageTokensPerSessionFromLastSevenDays() {
+        let snapshot = AgentSnapshot(
+            agent: .claude,
+            generatedAt: .now,
+            status: AgentStatusSummary(primaryLabel: "今日 Token", primaryValue: "2.5K"),
+            today: UsageMetricsDay.empty(for: .now),
+            lastSevenDays: [
+                UsageMetricsDay(
+                    date: .now,
+                    dialogs: 2,
+                    activeMinutes: 10,
+                    modifiedFiles: 0,
+                    addedLines: 0,
+                    deletedLines: 0,
+                    tokenUsage: 3_000
+                ),
+                UsageMetricsDay(
+                    date: .now.addingTimeInterval(-86_400),
+                    dialogs: 1,
+                    activeMinutes: 8,
+                    modifiedFiles: 0,
+                    addedLines: 0,
+                    deletedLines: 0,
+                    tokenUsage: 1_500
+                )
+            ],
+            lastYearDays: [],
+            currentModel: "claude-sonnet-4-5",
+            lastActiveAt: .now,
+            environment: AgentEnvironmentSummary(runtimeLabel: "Claude Code", dataSourceLabel: "~/.claude/projects"),
+            isAvailable: true
+        )
+
+        XCTAssertEqual(AgentPanelLayoutPolicy.recentAverageTokensPerSessionText(for: snapshot), "1.5K")
     }
 
     func testActivityTimelineMergesNearbyEventsIntoOneSession() {

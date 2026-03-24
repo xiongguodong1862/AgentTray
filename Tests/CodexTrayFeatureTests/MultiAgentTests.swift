@@ -117,7 +117,8 @@ final class MultiAgentTests: XCTestCase {
         XCTAssertEqual(snapshot.today.toolCalls, 0)
         XCTAssertEqual(snapshot.status.primaryLabel, "今日 Token")
         XCTAssertEqual(snapshot.status.primaryValue, "14.3K")
-        XCTAssertNil(snapshot.status.secondaryValue)
+        XCTAssertEqual(snapshot.status.secondaryLabel, "累计 Token")
+        XCTAssertEqual(snapshot.status.secondaryValue, "14.3K")
     }
 
     func testGeminiSnapshotBuilderParsesLogsJSONSessionsTokensAndModel() throws {
@@ -194,7 +195,8 @@ final class MultiAgentTests: XCTestCase {
         XCTAssertEqual(snapshot.today.toolCalls, 1)
         XCTAssertEqual(snapshot.status.primaryLabel, "今日 Token")
         XCTAssertEqual(snapshot.status.primaryValue, "1.5K")
-        XCTAssertNil(snapshot.status.secondaryValue)
+        XCTAssertEqual(snapshot.status.secondaryLabel, "累计 Token")
+        XCTAssertEqual(snapshot.status.secondaryValue, "1.5K")
         XCTAssertEqual(snapshot.environment.authLabel, "oauth-personal")
     }
 
@@ -231,7 +233,8 @@ final class MultiAgentTests: XCTestCase {
         XCTAssertEqual(snapshot.today.toolCalls, 2)
         XCTAssertEqual(snapshot.status.primaryLabel, "今日 Token")
         XCTAssertEqual(snapshot.status.primaryValue, "2.5K")
-        XCTAssertNil(snapshot.status.secondaryValue)
+        XCTAssertEqual(snapshot.status.secondaryLabel, "累计 Token")
+        XCTAssertEqual(snapshot.status.secondaryValue, "2.5K")
     }
 
     func testMultiAgentSnapshotBuilderCreatesAggregateSummary() {
