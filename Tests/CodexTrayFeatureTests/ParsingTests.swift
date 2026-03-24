@@ -2,6 +2,112 @@ import XCTest
 @testable import CodexTrayFeature
 
 final class ParsingTests: XCTestCase {
+    func testCodexInstallationLocatorUsesDefaultCodexHomeWithoutOverrides() throws {
+        let tempHome = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: tempHome, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempHome) }
+
+        let installation = CodexInstallationLocator(
+            environment: [:],
+            homeDirectory: tempHome
+        ).locate()
+
+        XCTAssertEqual(installation.codexHome, tempHome.appending(path: ".codex"))
+        XCTAssertEqual(installation.sessionsRoot, tempHome.appending(path: ".codex/sessions"))
+        XCTAssertEqual(installation.sqliteHome, tempHome.appending(path: ".codex"))
+        XCTAssertEqual(installation.stateDatabaseURL, tempHome.appending(path: ".codex/state_5.sqlite"))
+        XCTAssertEqual(installation.surfaceKind, .unknown)
+        XCTAssertEqual(installation.auth.storagePreference, .unknown)
+        XCTAssertEqual(installation.auth.authFileURL, tempHome.appending(path: ".codex/auth.json"))
+        XCTAssertFalse(installation.auth.authFileExists)
+    }
+
+    func testCodexInstallationLocatorUsesConfiguredSQLiteHomeAndKeyringPreference() throws {
+        let tempRoot = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let codexHome = tempRoot.appending(path: "custom-codex-home", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: codexHome, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let config = """
+        sqlite_home = "sqlite-store"
+        cli_auth_credentials_store = "keyring"
+        """
+        try config.write(
+            to: codexHome.appending(path: "config.toml"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let installation = CodexInstallationLocator(
+            environment: ["CODEX_HOME": codexHome.path],
+            homeDirectory: tempRoot
+        ).locate()
+
+        XCTAssertEqual(installation.codexHome, codexHome)
+        XCTAssertEqual(installation.sessionsRoot, codexHome.appending(path: "sessions"))
+        XCTAssertEqual(installation.sqliteHome, codexHome.appending(path: "sqlite-store"))
+        XCTAssertEqual(installation.stateDatabaseURL, codexHome.appending(path: "sqlite-store/state_5.sqlite"))
+        XCTAssertEqual(installation.surfaceKind, .unknown)
+        XCTAssertEqual(installation.auth.storagePreference, .keyring)
+        XCTAssertEqual(installation.auth.authFileURL, codexHome.appending(path: "auth.json"))
+        XCTAssertFalse(installation.auth.authFileExists)
+    }
+
+    func testCodexInstallationLocatorLetsCODEXSQLITEHOMEOverrideConfigAndReadsAuthFile() throws {
+        let tempRoot = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let codexHome = tempRoot.appending(path: "codex-home", directoryHint: .isDirectory)
+        let sqliteHome = tempRoot.appending(path: "sqlite-home", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: codexHome, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: sqliteHome, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let config = """
+        sqlite_home = "ignored-by-env"
+        cli_auth_credentials_store = "file"
+        """
+        try config.write(
+            to: codexHome.appending(path: "config.toml"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let authJSON = """
+        {
+          "auth_mode": "chatgpt",
+          "OPENAI_API_KEY": "sk-test",
+          "tokens": {
+            "id_token": "id-token",
+            "access_token": "access-token",
+            "refresh_token": "refresh-token"
+          }
+        }
+        """
+        try authJSON.write(
+            to: codexHome.appending(path: "auth.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let installation = CodexInstallationLocator(
+            environment: [
+                "CODEX_HOME": codexHome.path,
+                "CODEX_SQLITE_HOME": sqliteHome.path,
+            ],
+            homeDirectory: tempRoot
+        ).locate()
+
+        XCTAssertEqual(installation.sqliteHome, sqliteHome)
+        XCTAssertEqual(installation.stateDatabaseURL, sqliteHome.appending(path: "state_5.sqlite"))
+        XCTAssertEqual(installation.auth.storagePreference, .file)
+        XCTAssertEqual(installation.auth.authMode, "chatgpt")
+        XCTAssertTrue(installation.auth.authFileExists)
+        XCTAssertTrue(installation.auth.hasAPIKeyInAuthFile)
+        XCTAssertTrue(installation.auth.hasTokenSetInAuthFile)
+    }
+
     @MainActor
     func testUsageStoreUsesCachedSnapshotImmediatelyOnInit() throws {
         let tempDirectory = URL(fileURLWithPath: NSTemporaryDirectory())
@@ -40,8 +146,37 @@ final class ParsingTests: XCTestCase {
         let store = UsageStore(cacheStore: cacheStore)
 
         XCTAssertEqual(store.snapshot, expectedSnapshot)
+        XCTAssertFalse(store.environmentInfo.codexHomePath.isEmpty)
+        XCTAssertFalse(store.environmentInfo.sqliteHomePath.isEmpty)
+        XCTAssertFalse(store.environmentInfo.authStorageLabel.isEmpty)
         XCTAssertFalse(store.isLoading)
         XCTAssertNil(store.errorMessage)
+    }
+
+    @MainActor
+    func testUsageStoreExposesBuilderEnvironmentInfoImmediately() {
+        let environmentInfo = CodexEnvironmentInfo(
+            environmentLabel: "Extension",
+            authMethodLabel: "ChatGPT OAuth",
+            codexHomePath: "~/.codex-alt",
+            sqliteHomePath: "/tmp/codex-sqlite",
+            authStorageLabel: "keyring",
+            authModeLabel: "chatgpt",
+            authFileExists: false
+        )
+        let builder = CodexUsageSnapshotBuilder(
+            sessionsRoot: URL(fileURLWithPath: "/tmp/codex-home/sessions"),
+            stateDatabaseURL: URL(fileURLWithPath: "/tmp/codex-sqlite/state_5.sqlite"),
+            environmentInfo: environmentInfo
+        )
+
+        let store = UsageStore(builder: builder)
+
+        XCTAssertEqual(store.environmentInfo, environmentInfo)
+        XCTAssertEqual(
+            store.environmentInfo.summaryLine,
+            "当前环境：Extension  ·  认证方式：ChatGPT OAuth"
+        )
     }
 
     func testApplyPatchParserCountsFilesAndLineChanges() {
@@ -162,5 +297,41 @@ final class ParsingTests: XCTestCase {
         XCTAssertEqual(secondSnapshot.pet.level, 0)
         XCTAssertGreaterThan(secondSnapshot.pet.currentXP, 0)
         XCTAssertEqual(secondSnapshot.pet.currentXP, secondSnapshot.pet.todayXP)
+    }
+
+    func testSnapshotBuilderResetsExpiredPrimaryLimitWindowOnNextOpen() throws {
+        let tempDirectory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let sessionsRoot = tempDirectory.appending(path: "sessions/2026/03/23", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: sessionsRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDirectory) }
+
+        let session = """
+        {"timestamp":"2026-03-23T16:00:00.000Z","type":"session_meta","payload":{"id":"thread-1","timestamp":"2026-03-23T16:00:00.000Z"}}
+        {"timestamp":"2026-03-23T16:01:00.000Z","type":"event_msg","payload":{"type":"user_message"}}
+        {"timestamp":"2026-03-23T16:02:00.000Z","type":"event_msg","payload":{"type":"token_count","rate_limits":{"primary":{"used_percent":64,"window_minutes":300,"resets_at":1774260000},"secondary":{"used_percent":10,"window_minutes":10080,"resets_at":1774861200}}}}
+        """
+        try session.write(to: sessionsRoot.appending(path: "thread-1.jsonl"), atomically: true, encoding: .utf8)
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .current
+
+        let builder = CodexUsageSnapshotBuilder(
+            sessionsRoot: tempDirectory.appending(path: "sessions"),
+            stateDatabaseURL: tempDirectory.appending(path: "state_5.sqlite"),
+            calendar: calendar
+        )
+
+        let snapshot = try builder.buildSnapshot(now: ISO8601DateParser.parse("2026-03-24T03:00:00.000Z") ?? .now)
+        let primaryLimit = try XCTUnwrap(snapshot.primaryLimit)
+        let secondaryLimit = try XCTUnwrap(snapshot.secondaryLimit)
+
+        XCTAssertEqual(primaryLimit.usedPercent, 0, accuracy: 0.0001)
+        XCTAssertEqual(primaryLimit.remainingPercent, 100, accuracy: 0.0001)
+        XCTAssertEqual(
+            primaryLimit.resetsAt,
+            ISO8601DateParser.parse("2026-03-24T06:00:00.000Z")
+        )
+        XCTAssertEqual(secondaryLimit.usedPercent, 10, accuracy: 0.0001)
     }
 }

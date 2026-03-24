@@ -405,8 +405,17 @@ enum ScreenLayout {
     private static let minimumPanelWidth: CGFloat = 780
     private static let additionalPanelWidth: CGFloat = 420
 
+    struct ScreenCandidate: Equatable {
+        let hasNotch: Bool
+        let isBuiltIn: Bool
+    }
+
+    private static var primaryScreen: NSScreen? {
+        preferredScreen(from: NSScreen.screens)
+    }
+
     static var notchMetrics: NotchMetrics {
-        notchMetrics(for: NSScreen.main ?? NSScreen.screens.first)
+        notchMetrics(for: primaryScreen)
     }
 
     static var collapsedIslandSize: CGSize {
@@ -425,23 +434,17 @@ enum ScreenLayout {
     }
 
     static func hotspotFrame() -> CGRect? {
-        guard let screen = NSScreen.main ?? NSScreen.screens.first else { return nil }
-        let size = collapsedIslandSize
-        let x = screen.frame.midX - (size.width / 2)
-        let y = screen.frame.maxY - size.height
-        return CGRect(x: x, y: y, width: size.width, height: size.height)
+        guard let screen = primaryScreen else { return nil }
+        return hotspotFrame(screenFrame: screen.frame, size: collapsedIslandSize)
     }
 
     static func panelFrame(anchoredTo anchorFrame: CGRect, range: HeatmapRange) -> CGRect {
         let panelSize = panelSize(for: range)
         let width = panelSize.width
         let height = panelSize.height
-        let screen = screenContaining(point: CGPoint(x: anchorFrame.midX, y: anchorFrame.midY)) ?? NSScreen.main ?? NSScreen.screens.first
+        let screen = screenContaining(point: CGPoint(x: anchorFrame.midX, y: anchorFrame.midY)) ?? primaryScreen
         let screenFrame = screen?.frame ?? CGRect(x: 0, y: 0, width: width, height: height)
-        let desiredX = anchorFrame.midX - (width / 2)
-        let x = min(max(screenFrame.minX + panelHorizontalPadding, desiredX), screenFrame.maxX - width - panelHorizontalPadding)
-        let y = screenFrame.maxY - height
-        return CGRect(x: x, y: y, width: width, height: height)
+        return panelFrame(anchoredTo: anchorFrame, panelSize: panelSize, screenFrame: screenFrame)
     }
 
     static func collapsedPanelFrame(anchoredTo anchorFrame: CGRect) -> CGRect {
@@ -450,6 +453,59 @@ enum ScreenLayout {
 
     private static func screenContaining(point: CGPoint) -> NSScreen? {
         NSScreen.screens.first(where: { $0.frame.contains(point) })
+    }
+
+    static func preferredScreenIndex(candidates: [ScreenCandidate]) -> Int? {
+        if let notchIndex = candidates.firstIndex(where: \.hasNotch) {
+            return notchIndex
+        }
+        if let builtInIndex = candidates.firstIndex(where: \.isBuiltIn) {
+            return builtInIndex
+        }
+        return candidates.isEmpty ? nil : 0
+    }
+
+    static func hotspotFrame(screenFrame: CGRect, size: CGSize) -> CGRect {
+        let x = screenFrame.midX - (size.width / 2)
+        let y = screenFrame.maxY - size.height
+        return CGRect(x: x, y: y, width: size.width, height: size.height)
+    }
+
+    static func panelFrame(anchoredTo anchorFrame: CGRect, panelSize: CGSize, screenFrame: CGRect) -> CGRect {
+        let desiredX = anchorFrame.midX - (panelSize.width / 2)
+        let x = min(
+            max(screenFrame.minX + panelHorizontalPadding, desiredX),
+            screenFrame.maxX - panelSize.width - panelHorizontalPadding
+        )
+        let y = screenFrame.maxY - panelSize.height
+        return CGRect(x: x, y: y, width: panelSize.width, height: panelSize.height)
+    }
+
+    private static func preferredScreen(from screens: [NSScreen]) -> NSScreen? {
+        let candidates = screens.map {
+            ScreenCandidate(
+                hasNotch: hasNotch($0),
+                isBuiltIn: isBuiltIn($0)
+            )
+        }
+        guard let index = preferredScreenIndex(candidates: candidates), screens.indices.contains(index) else {
+            return nil
+        }
+        return screens[index]
+    }
+
+    private static func hasNotch(_ screen: NSScreen) -> Bool {
+        guard let leftArea = screen.auxiliaryTopLeftArea, let rightArea = screen.auxiliaryTopRightArea else {
+            return false
+        }
+        return rightArea.minX > leftArea.maxX
+    }
+
+    private static func isBuiltIn(_ screen: NSScreen) -> Bool {
+        guard let screenNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
+            return false
+        }
+        return CGDisplayIsBuiltin(CGDirectDisplayID(screenNumber.uint32Value)) != 0
     }
 
     private static func notchMetrics(for screen: NSScreen?) -> NotchMetrics {

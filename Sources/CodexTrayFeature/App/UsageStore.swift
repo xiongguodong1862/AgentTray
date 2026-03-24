@@ -4,6 +4,7 @@ import Foundation
 @MainActor
 public final class UsageStore: ObservableObject {
     @Published public private(set) var snapshot: UsageSnapshot
+    @Published public private(set) var environmentInfo: CodexEnvironmentInfo
     @Published public private(set) var isLoading = false
     @Published public private(set) var errorMessage: String?
 
@@ -17,6 +18,7 @@ public final class UsageStore: ObservableObject {
         self.builder = builder
         self.cacheStore = cacheStore
         self.snapshot = cacheStore.load() ?? .placeholder
+        self.environmentInfo = builder.environmentInfo
     }
 
     public func start() {

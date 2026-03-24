@@ -164,11 +164,19 @@ struct PanelRootView: View {
 
     private var footerRow: some View {
         HStack(spacing: 12) {
-            if let errorMessage = store.errorMessage {
-                Text(errorMessage)
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundStyle(Color(hex: "#FF9C8A"))
-                    .lineLimit(2)
+            VStack(alignment: .leading, spacing: 6) {
+                if let errorMessage = store.errorMessage {
+                    Text(errorMessage)
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .foregroundStyle(Color(hex: "#FF9C8A"))
+                        .lineLimit(2)
+                }
+
+                Text(store.environmentInfo.summaryLine)
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.68))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
 
             Spacer()

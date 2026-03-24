@@ -30,16 +30,19 @@ public struct CodexUsageSnapshotBuilder: Sendable {
     private let stateDatabaseURL: URL
     private let calendar: Calendar
     private let petBaselineStore: PetProgressBaselineStore
+    public let environmentInfo: CodexEnvironmentInfo
 
     public init(
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
         calendar: Calendar = .current
     ) {
+        let installation = CodexInstallationLocator(homeDirectory: homeDirectory).locate()
         self.init(
-            sessionsRoot: homeDirectory.appending(path: ".codex/sessions"),
-            stateDatabaseURL: homeDirectory.appending(path: ".codex/state_5.sqlite"),
+            sessionsRoot: installation.sessionsRoot,
+            stateDatabaseURL: installation.stateDatabaseURL,
             calendar: calendar,
-            petBaselineStore: PetProgressBaselineStore()
+            petBaselineStore: PetProgressBaselineStore(),
+            environmentInfo: installation.environmentInfo
         )
     }
 
@@ -47,12 +50,22 @@ public struct CodexUsageSnapshotBuilder: Sendable {
         sessionsRoot: URL,
         stateDatabaseURL: URL,
         calendar: Calendar = .current,
-        petBaselineStore: PetProgressBaselineStore = PetProgressBaselineStore()
+        petBaselineStore: PetProgressBaselineStore = PetProgressBaselineStore(),
+        environmentInfo: CodexEnvironmentInfo? = nil
     ) {
         self.sessionsRoot = sessionsRoot
         self.stateDatabaseURL = stateDatabaseURL
         self.calendar = calendar
         self.petBaselineStore = petBaselineStore
+        self.environmentInfo = environmentInfo ?? CodexEnvironmentInfo(
+            environmentLabel: "未知",
+            authMethodLabel: "未知",
+            codexHomePath: sessionsRoot.deletingLastPathComponent().path,
+            sqliteHomePath: stateDatabaseURL.deletingLastPathComponent().path,
+            authStorageLabel: "unknown",
+            authModeLabel: nil,
+            authFileExists: false
+        )
     }
 
     public func buildSnapshot(now: Date = .now) throws -> UsageSnapshot {
@@ -76,11 +89,13 @@ public struct CodexUsageSnapshotBuilder: Sendable {
         }
         let adjustedTotalXP = max(0, totalXP - baseline.totalXP)
         let pet = PetProgressCalculator.progress(totalXP: adjustedTotalXP, todayXP: adjustedTodayXP)
+        let primaryLimit = normalizedRateLimitWindow(sessionResult.latestPrimary?.value, now: now)
+        let secondaryLimit = normalizedRateLimitWindow(sessionResult.latestSecondary?.value, now: now)
 
         return UsageSnapshot(
             generatedAt: now,
-            primaryLimit: sessionResult.latestPrimary?.value,
-            secondaryLimit: sessionResult.latestSecondary?.value,
+            primaryLimit: primaryLimit,
+            secondaryLimit: secondaryLimit,
             today: today,
             lastSevenDays: lastSevenDays,
             lastYearDays: lastYearDays,
@@ -97,6 +112,22 @@ public struct CodexUsageSnapshotBuilder: Sendable {
         let baseline = PetProgressBaseline(totalXP: totalXP, todayXP: todayXP, day: day)
         try? petBaselineStore.save(baseline)
         return baseline
+    }
+
+    private func normalizedRateLimitWindow(_ window: RateLimitWindow?, now: Date) -> RateLimitWindow? {
+        guard let window else { return nil }
+        guard window.resetsAt <= now else { return window }
+
+        let interval = max(1, window.windowMinutes) * 60
+        let elapsed = max(0, now.timeIntervalSince(window.resetsAt))
+        let periodsElapsed = Int(elapsed / Double(interval)) + 1
+        let nextReset = window.resetsAt.addingTimeInterval(Double(periodsElapsed * interval))
+
+        return RateLimitWindow(
+            usedPercent: 0,
+            windowMinutes: window.windowMinutes,
+            resetsAt: nextReset
+        )
     }
 
     private func mergeMetrics(

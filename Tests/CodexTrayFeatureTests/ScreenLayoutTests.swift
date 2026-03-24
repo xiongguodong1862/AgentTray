@@ -37,4 +37,55 @@ final class ScreenLayoutTests: XCTestCase {
         XCTAssertNotEqual(yearSize.height, weekSize.height)
         XCTAssertLessThan(weekSize.height, monthSize.height)
     }
+
+    func testHotspotFrameCentersWithinProvidedPrimaryScreenFrame() {
+        let screenFrame = CGRect(x: 1512, y: 0, width: 1512, height: 982)
+        let size = CGSize(width: 380, height: 38)
+
+        let hotspot = ScreenLayout.hotspotFrame(screenFrame: screenFrame, size: size)
+
+        XCTAssertEqual(hotspot.midX, screenFrame.midX, accuracy: 0.001)
+        XCTAssertEqual(hotspot.maxY, screenFrame.maxY, accuracy: 0.001)
+    }
+
+    func testPanelFrameStaysWithinProvidedPrimaryScreenBounds() {
+        let screenFrame = CGRect(x: 1512, y: 0, width: 1512, height: 982)
+        let anchor = CGRect(x: 1512 + 20, y: 944, width: 380, height: 38)
+        let panelSize = CGSize(width: 900, height: 518)
+
+        let panel = ScreenLayout.panelFrame(anchoredTo: anchor, panelSize: panelSize, screenFrame: screenFrame)
+
+        XCTAssertGreaterThanOrEqual(panel.minX, screenFrame.minX + 12)
+        XCTAssertLessThanOrEqual(panel.maxX, screenFrame.maxX - 12)
+        XCTAssertEqual(panel.maxY, screenFrame.maxY, accuracy: 0.001)
+    }
+
+    func testPreferredScreenIndexPrefersNotchedDisplay() {
+        let candidates = [
+            ScreenLayout.ScreenCandidate(hasNotch: false, isBuiltIn: false),
+            ScreenLayout.ScreenCandidate(hasNotch: true, isBuiltIn: true),
+            ScreenLayout.ScreenCandidate(hasNotch: false, isBuiltIn: true),
+        ]
+
+        XCTAssertEqual(ScreenLayout.preferredScreenIndex(candidates: candidates), 1)
+    }
+
+    func testPreferredScreenIndexFallsBackToBuiltInDisplay() {
+        let candidates = [
+            ScreenLayout.ScreenCandidate(hasNotch: false, isBuiltIn: false),
+            ScreenLayout.ScreenCandidate(hasNotch: false, isBuiltIn: true),
+        ]
+
+        XCTAssertEqual(ScreenLayout.preferredScreenIndex(candidates: candidates), 1)
+    }
+
+    func testPreferredScreenIndexFallsBackToFirstDisplayWhenNeeded() {
+        let candidates = [
+            ScreenLayout.ScreenCandidate(hasNotch: false, isBuiltIn: false),
+            ScreenLayout.ScreenCandidate(hasNotch: false, isBuiltIn: false),
+        ]
+
+        XCTAssertEqual(ScreenLayout.preferredScreenIndex(candidates: candidates), 0)
+        XCTAssertNil(ScreenLayout.preferredScreenIndex(candidates: []))
+    }
 }
