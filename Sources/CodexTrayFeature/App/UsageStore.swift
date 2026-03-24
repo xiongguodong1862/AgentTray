@@ -16,13 +16,16 @@ public final class UsageStore: ObservableObject {
     private let codexCacheStore: SnapshotCacheStore
     private let multiAgentCacheStore: MultiAgentSnapshotCacheStore
     private let agentCacheStore: AgentSnapshotCacheStore
+    private let settingsStore: AppSettingsStore
+    private var defaultAgentCancellable: AnyCancellable?
 
-    public init(
+    init(
         builder: CodexUsageSnapshotBuilder = CodexUsageSnapshotBuilder(),
         multiAgentBuilder: MultiAgentSnapshotBuilder? = nil,
         cacheStore: SnapshotCacheStore = SnapshotCacheStore(),
         multiAgentCacheStore: MultiAgentSnapshotCacheStore = MultiAgentSnapshotCacheStore(),
-        agentCacheStore: AgentSnapshotCacheStore = AgentSnapshotCacheStore()
+        agentCacheStore: AgentSnapshotCacheStore = AgentSnapshotCacheStore(),
+        settingsStore: AppSettingsStore = AppSettingsStore()
     ) {
         let initialSnapshot = cacheStore.load() ?? .placeholder
         let initialFocusedAgent: AgentKind = .codex
@@ -31,6 +34,7 @@ public final class UsageStore: ObservableObject {
         self.codexCacheStore = cacheStore
         self.multiAgentCacheStore = multiAgentCacheStore
         self.agentCacheStore = agentCacheStore
+        self.settingsStore = settingsStore
         self.snapshot = initialSnapshot
         self.environmentInfo = builder.environmentInfo
         let cachedMultiAgent = multiAgentCacheStore.load()
@@ -40,14 +44,27 @@ public final class UsageStore: ObservableObject {
                 focusedAgent: initialFocusedAgent,
                 agentCacheStore: agentCacheStore
             )
-        self.selectedAgent = .all
-        self.focusedAgent = cachedMultiAgent?.focusedAgent ?? initialFocusedAgent
-        self.multiAgentSnapshot = cachedMultiAgent ?? self.multiAgentBuilder.placeholder(
+        let initialMultiAgentSnapshot = cachedMultiAgent ?? self.multiAgentBuilder.placeholder(
             codexSnapshot: initialSnapshot,
             codexEnvironment: builder.environmentInfo,
             focusedAgent: cachedMultiAgent?.focusedAgent ?? initialFocusedAgent
         )
+        let initialSelectedAgent = settingsStore.settings.defaultAgent.resolve(
+            mostRecentlyActive: initialMultiAgentSnapshot.mostRecentlyActiveAgent
+        )
+        self.focusedAgent = cachedMultiAgent?.focusedAgent ?? initialFocusedAgent
+        self.multiAgentSnapshot = initialMultiAgentSnapshot
+        self.selectedAgent = initialSelectedAgent
+        if self.selectedAgent != .all {
+            self.focusedAgent = self.selectedAgent
+        }
         reconcileSelection()
+        defaultAgentCancellable = settingsStore.$settings
+            .map(\.defaultAgent)
+            .removeDuplicates()
+            .sink { [weak self] preference in
+                self?.applyDefaultAgent(preference)
+            }
     }
 
     public func start() {
@@ -111,6 +128,18 @@ public final class UsageStore: ObservableObject {
             lastYearDays: multiAgentSnapshot.lastYearDays
         )
         reconcileSelection()
+    }
+
+    private func applyDefaultAgent(_ preference: DefaultAgentPreference) {
+        selectedAgent = preference.resolve(mostRecentlyActive: multiAgentSnapshot.mostRecentlyActiveAgent)
+        if selectedAgent != .all {
+            focusedAgent = selectedAgent
+        }
+        reconcileSelection()
+    }
+
+    func resetSelectionToDefault() {
+        applyDefaultAgent(settingsStore.settings.defaultAgent)
     }
 
     private func reconcileSelection() {

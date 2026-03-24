@@ -474,6 +474,54 @@ public enum PetProgressCalculator {
     }
 }
 
+public enum PetProgressExplanationFormatter {
+    public static func levelDescriptions() -> [String] {
+        [
+            "Lv.0-2: \(PetStage.cursorEgg.displayName)",
+            "Lv.3-5: \(PetStage.pixelKitten.displayName)",
+            "Lv.6-9: \(PetStage.terminalCat.displayName)",
+            "Lv.10-14: \(PetStage.mechPatchCat.displayName)",
+            "Lv.15+: \(PetStage.notchGuardian.displayName)",
+        ]
+    }
+
+    public static func xpFormulaDescription() -> String {
+        "单日 XP = round(3×会话数 + 0.5×活跃分钟 + 2×修改文件数 + 1.2×sqrt(新增行数+删除行数))"
+    }
+
+    public static func progressRuleDescription() -> String {
+        "宠物总经验按首次打开应用后的新增 XP 累计计算。"
+    }
+
+    public static func agentContributionDescriptions(from entries: [AgentXPBreakdown]) -> [String] {
+        guard entries.isEmpty == false else {
+            return ["暂无可统计的 Agent 经验"]
+        }
+
+        let sortedEntries = entries.sorted { lhs, rhs in
+            if lhs.totalXP == rhs.totalXP {
+                return lhs.agent.displayName < rhs.agent.displayName
+            }
+            return lhs.totalXP > rhs.totalXP
+        }
+        let totalXP = sortedEntries.reduce(0) { $0 + $1.totalXP }
+        let detailLines = sortedEntries.map {
+            "\($0.agent.displayName): 今日 +\($0.todayXP) / 近一年累计 \($0.totalXP)"
+        }
+        return ["全部 Agent 近一年累计: \(totalXP) XP"] + detailLines
+    }
+
+    public static func tooltipText(from entries: [AgentXPBreakdown]) -> String {
+        (
+            ["等级名称"]
+            + levelDescriptions()
+            + ["", "经验计算", xpFormulaDescription(), progressRuleDescription(), "", "各 Agent 贡献"]
+            + agentContributionDescriptions(from: entries)
+        )
+        .joined(separator: "\n")
+    }
+}
+
 public enum DurationFormatter {
     public static func string(for minutes: Int) -> String {
         let hours = minutes / 60

@@ -38,6 +38,12 @@ final class ScreenLayoutTests: XCTestCase {
         XCTAssertLessThan(weekSize.height, monthSize.height)
     }
 
+    func testAllPanelYearHeightMatchesTrimmedBaseLayout() {
+        let allYearSize = ScreenLayout.panelSize(for: .year, agent: .all)
+
+        XCTAssertEqual(allYearSize.height, 560)
+    }
+
     func testHotspotFrameCentersWithinProvidedPrimaryScreenFrame() {
         let screenFrame = CGRect(x: 1512, y: 0, width: 1512, height: 982)
         let size = CGSize(width: 380, height: 38)

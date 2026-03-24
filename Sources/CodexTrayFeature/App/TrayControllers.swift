@@ -21,17 +21,18 @@ public final class CodexTrayAppDelegate: NSObject, NSApplicationDelegate {
 
 @MainActor
 final class TrayCoordinator: NSObject {
-    private let store = UsageStore()
+    private let settingsStore = AppSettingsStore()
+    private lazy var store = UsageStore(settingsStore: settingsStore)
     private var statusItemController: StatusItemController?
     private var hotspotController: NotchHotspotController?
     private var panelController: PanelWindowController?
     private var refreshTimer: Timer?
     private var screenObserver: Any?
+    private var settingsCancellable: AnyCancellable?
 
     func start() {
         statusItemController = StatusItemController(store: store, target: self, action: #selector(togglePanel))
         hotspotController = NotchHotspotController(store: store, target: self, action: #selector(togglePanel))
-        hotspotController?.show()
         screenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil,
@@ -41,15 +42,42 @@ final class TrayCoordinator: NSObject {
                 self?.updateAnchors()
             }
         }
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+        settingsCancellable = settingsStore.$settings
+            .receive(on: RunLoop.main)
+            .sink { [weak self] settings in
+                self?.apply(settings: settings)
+            }
+        apply(settings: settingsStore.settings)
+        store.start()
+    }
+
+    private func apply(settings: AppSettings) {
+        scheduleRefreshTimer(for: settings.refreshInterval)
+        guard panelController?.isPanelVisible != true else {
+            hotspotController?.hide()
+            return
+        }
+        if settings.showsHotspot {
+            hotspotController?.show()
+        } else {
+            hotspotController?.hide()
+        }
+    }
+
+    private func scheduleRefreshTimer(for interval: RefreshIntervalOption) {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+        guard let timeInterval = interval.timeInterval else { return }
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: timeInterval, repeats: true) { [weak self] _ in
             Task { await self?.store.refresh() }
         }
-        store.start()
     }
 
     func stop() {
         refreshTimer?.invalidate()
         refreshTimer = nil
+        settingsCancellable?.cancel()
+        settingsCancellable = nil
         if let screenObserver {
             NotificationCenter.default.removeObserver(screenObserver)
         }
@@ -78,12 +106,17 @@ final class TrayCoordinator: NSObject {
 
         let panelController = PanelWindowController(
             store: store,
+            settingsStore: settingsStore,
             onQuit: { NSApp.terminate(nil) },
             onVisibilityChange: { [weak self] isVisible in
                 if isVisible {
                     self?.hotspotController?.hide()
                 } else {
-                    self?.hotspotController?.show()
+                    if self?.settingsStore.settings.showsHotspot == true {
+                        self?.hotspotController?.show()
+                    } else {
+                        self?.hotspotController?.hide()
+                    }
                 }
             }
         )
@@ -165,6 +198,10 @@ final class NotchHotspotController {
 
     func show() {
         updateFrame()
+        guard window.isVisible == false else {
+            window.alphaValue = 1
+            return
+        }
         window.orderFrontRegardless()
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.24
@@ -191,6 +228,7 @@ final class NotchHotspotController {
 @MainActor
 final class PanelWindowController: NSObject, NSWindowDelegate {
     private let store: UsageStore
+    private let settingsStore: AppSettingsStore
     private let panel: FloatingPanel
     private let hostingView: NSHostingView<PanelRootView>
     private var localMonitor: Any?
@@ -201,22 +239,26 @@ final class PanelWindowController: NSObject, NSWindowDelegate {
     private var currentSelectedAgent: AgentKind = .all
     private var isAnimating = false
     private let onVisibilityChange: (Bool) -> Void
+    var isPanelVisible: Bool { panel.isVisible }
 
     init(
         store: UsageStore,
+        settingsStore: AppSettingsStore,
         onQuit: @escaping () -> Void,
         onVisibilityChange: @escaping (Bool) -> Void
     ) {
         self.store = store
+        self.settingsStore = settingsStore
         self.onVisibilityChange = onVisibilityChange
         let rootView = PanelRootView(
             store: store,
+            settingsStore: settingsStore,
             onQuit: onQuit,
             onHeatmapRangeChange: { _, _ in }
         )
         hostingView = NSHostingView(rootView: rootView)
         panel = FloatingPanel(
-            contentRect: CGRect(origin: .zero, size: ScreenLayout.panelSize(for: .year, agent: .all)),
+            contentRect: CGRect(origin: .zero, size: ScreenLayout.panelSize(for: settingsStore.settings.defaultHeatmapRange, agent: store.selectedAgent)),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -282,8 +324,11 @@ final class PanelWindowController: NSObject, NSWindowDelegate {
 
     private func show(anchoredTo anchorFrame: CGRect?) {
         let anchor = anchorFrame ?? ScreenLayout.hotspotFrame() ?? .zero
+        store.resetSelectionToDefault()
+        settingsStore.markPanelPresented()
         currentAnchorFrame = anchor
         currentSelectedAgent = store.selectedAgent
+        currentHeatmapRange = settingsStore.settings.defaultHeatmapRange
         let finalFrame = ScreenLayout.panelFrame(anchoredTo: anchor, range: currentHeatmapRange, agent: currentSelectedAgent)
         let collapsedFrame = ScreenLayout.collapsedPanelFrame(anchoredTo: anchor)
         panel.setFrame(collapsedFrame, display: false)
@@ -408,7 +453,7 @@ enum ScreenLayout {
     private static let codexBaseExpandedPanelHeight: CGFloat = 560
     private static let claudeBaseExpandedPanelHeight: CGFloat = 592
     private static let geminiBaseExpandedPanelHeight: CGFloat = 576
-    private static let allBaseExpandedPanelHeight: CGFloat = 644
+    private static let allBaseExpandedPanelHeight: CGFloat = 560
     private static let minimumPanelWidth: CGFloat = 780
     private static let additionalPanelWidth: CGFloat = 420
 

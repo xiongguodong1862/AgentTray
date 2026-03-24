@@ -58,6 +58,50 @@ final class UsageCalculatorsTests: XCTestCase {
         XCTAssertEqual(finalStageTargetXP, 11_625)
     }
 
+    func testPetProgressExplanationFormatterReturnsExpectedLevelDescriptions() {
+        XCTAssertEqual(
+            PetProgressExplanationFormatter.levelDescriptions(),
+            [
+                "Lv.0-2: 光标蛋",
+                "Lv.3-5: 像素幼猫",
+                "Lv.6-9: 终端猫",
+                "Lv.10-14: 机甲补丁猫",
+                "Lv.15+: 刘海守护猫",
+            ]
+        )
+    }
+
+    func testPetProgressExplanationFormatterBuildsAgentContributionDescriptions() {
+        let descriptions = PetProgressExplanationFormatter.agentContributionDescriptions(
+            from: [
+                AgentXPBreakdown(agent: .claude, todayXP: 7, totalXP: 120),
+                AgentXPBreakdown(agent: .codex, todayXP: 12, totalXP: 300),
+            ]
+        )
+
+        XCTAssertEqual(
+            descriptions,
+            [
+                "全部 Agent 近一年累计: 420 XP",
+                "Codex: 今日 +12 / 近一年累计 300",
+                "Claude: 今日 +7 / 近一年累计 120",
+            ]
+        )
+    }
+
+    func testPetProgressExplanationFormatterBuildsTooltipText() {
+        let tooltip = PetProgressExplanationFormatter.tooltipText(
+            from: [
+                AgentXPBreakdown(agent: .codex, todayXP: 12, totalXP: 300),
+            ]
+        )
+
+        XCTAssertTrue(tooltip.contains("等级名称"))
+        XCTAssertTrue(tooltip.contains("经验计算"))
+        XCTAssertTrue(tooltip.contains("各 Agent 贡献"))
+        XCTAssertTrue(tooltip.contains("Codex: 今日 +12 / 近一年累计 300"))
+    }
+
     func testUsageLimitProgressStyleUsesExpectedThresholdColors() {
         XCTAssertEqual(UsageLimitProgressStyle.tintHex(for: 80), "#5FE38C")
         XCTAssertEqual(UsageLimitProgressStyle.tintHex(for: 56), "#F5C46B")

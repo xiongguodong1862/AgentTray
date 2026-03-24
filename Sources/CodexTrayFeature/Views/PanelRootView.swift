@@ -1,19 +1,38 @@
+import Combine
 import SwiftUI
 
 struct PanelRootView: View {
     @ObservedObject var store: UsageStore
+    @ObservedObject var settingsStore: AppSettingsStore
     let onQuit: () -> Void
     var onHeatmapRangeChange: (HeatmapRange, AgentKind) -> Void
-    @State private var heatmapRange: HeatmapRange = .year
+    @State private var heatmapRange: HeatmapRange
+    @State private var isPetGuideHovered = false
+    @State private var isSettingsPresented = false
+
+    init(
+        store: UsageStore,
+        settingsStore: AppSettingsStore,
+        onQuit: @escaping () -> Void,
+        onHeatmapRangeChange: @escaping (HeatmapRange, AgentKind) -> Void
+    ) {
+        self.store = store
+        self.settingsStore = settingsStore
+        self.onQuit = onQuit
+        self.onHeatmapRangeChange = onHeatmapRangeChange
+        _heatmapRange = State(initialValue: settingsStore.settings.defaultHeatmapRange)
+    }
 
     private var islandHeight: CGFloat { ScreenLayout.collapsedIslandSize.height }
     private var panelWidth: CGFloat { ScreenLayout.panelWidth }
     private var selectedAgent: AgentKind { store.selectedAgent }
-    private var availableTabs: [AgentKind] {
-        let available = store.multiAgentSnapshot.agents
+    private var availableAgents: [AgentKind] {
+        store.multiAgentSnapshot.agents
             .filter(\.isAvailable)
             .map(\.agent)
-        return [.all] + available
+    }
+    private var availableTabs: [AgentKind] {
+        [.all] + availableAgents
     }
 
     var body: some View {
@@ -49,6 +68,15 @@ struct PanelRootView: View {
                 .padding(.bottom, 18)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
+
+            if isSettingsPresented {
+                settingsOverlay
+                    .padding(.trailing, 24)
+                    .padding(.bottom, 24)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                    .zIndex(30)
+            }
         }
         .frame(width: panelWidth)
         .frame(maxHeight: .infinity)
@@ -66,6 +94,13 @@ struct PanelRootView: View {
         .onChange(of: selectedAgent) { _, newValue in
             onHeatmapRangeChange(heatmapRange, newValue)
         }
+        .onReceive(settingsStore.$panelPresentationSequence.dropFirst()) { _ in
+            heatmapRange = settingsStore.settings.defaultHeatmapRange
+            isSettingsPresented = false
+        }
+        .animation(.easeOut(duration: 0.18), value: isSettingsPresented)
+        .animation(.easeInOut(duration: 0.35), value: settingsStore.settings.themeTint)
+        .animation(.easeInOut(duration: 0.35), value: settingsStore.settings.heatmapColor)
     }
 
     private var tabBar: some View {
@@ -144,6 +179,15 @@ struct PanelRootView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
 
+                Image(systemName: "info.circle")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.52))
+                    .padding(4)
+                    .contentShape(Rectangle())
+                    .onHover { isHovered in
+                        isPetGuideHovered = isHovered
+                    }
+
                 Spacer()
 
                 Text("Lv.\(progress.level)")
@@ -182,6 +226,19 @@ struct PanelRootView: View {
             }
         }
         .padding(.top, 8)
+        .overlay(alignment: .topLeading) {
+            if isPetGuideHovered {
+                HeatmapTooltip(
+                    text: PetProgressExplanationFormatter.tooltipText(from: xpBreakdown),
+                    width: 300,
+                    multilineAlignment: .leading
+                )
+                .offset(x: 108, y: -8)
+                .allowsHitTesting(false)
+                .zIndex(20)
+            }
+        }
+        .zIndex(isPetGuideHovered ? 20 : 0)
     }
 
     private var allSummaryBlock: some View {
@@ -255,7 +312,7 @@ struct PanelRootView: View {
             heatmapContent(days: days)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            HeatmapLegend()
+            HeatmapLegend(colorPreset: settingsStore.settings.heatmapColor)
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .padding(.top, heatmapRange == .month ? 12 : 0)
         }
@@ -282,8 +339,17 @@ struct PanelRootView: View {
 
             Spacer()
 
-            Button("退出", action: onQuit)
+            HStack(spacing: 8) {
+                Button {
+                    isSettingsPresented.toggle()
+                } label: {
+                    Label("设置", systemImage: "gearshape.fill")
+                }
                 .buttonStyle(ChromeButtonStyle(tint: .white.opacity(0.12)))
+
+                Button("退出", action: onQuit)
+                    .buttonStyle(ChromeButtonStyle(tint: .white.opacity(0.12)))
+            }
         }
     }
 
@@ -335,13 +401,14 @@ struct PanelRootView: View {
     }
 
     private var expandedBackground: LinearGradient {
-        LinearGradient(
+        let gradientHexes = settingsStore.settings.themeTint.gradientHexes
+        return LinearGradient(
             stops: [
-                .init(color: .black, location: 0.0),
-                .init(color: .black, location: 0.14),
-                .init(color: Color(hex: "#071321"), location: 0.38),
-                .init(color: Color(hex: "#0b1d31"), location: 0.7),
-                .init(color: Color(hex: "#102942"), location: 1.0),
+                .init(color: Color(hex: gradientHexes[0]), location: 0.0),
+                .init(color: Color(hex: gradientHexes[1]), location: 0.14),
+                .init(color: Color(hex: gradientHexes[2]), location: 0.38),
+                .init(color: Color(hex: gradientHexes[3]), location: 0.7),
+                .init(color: Color(hex: gradientHexes[4]), location: 1.0),
             ],
             startPoint: .top,
             endPoint: .bottom
@@ -381,12 +448,20 @@ struct PanelRootView: View {
     private func heatmapContent(days: [UsageMetricsDay]) -> some View {
         switch heatmapRange {
         case .year:
-            YearContributionHeatmap(days: days)
+            YearContributionHeatmap(days: days, colorPreset: settingsStore.settings.heatmapColor)
         case .month:
-            MonthCalendarHeatmap(days: days)
+            MonthCalendarHeatmap(days: days, colorPreset: settingsStore.settings.heatmapColor)
         case .week:
-            WeekStripHeatmap(days: Array(days.suffix(7)))
+            WeekStripHeatmap(days: Array(days.suffix(7)), colorPreset: settingsStore.settings.heatmapColor)
         }
+    }
+
+    private var settingsOverlay: some View {
+        SettingsCardView(
+            store: store,
+            settingsStore: settingsStore,
+            onClose: { isSettingsPresented = false }
+        )
     }
 
     private func snapshot(for agent: AgentKind) -> AgentSnapshot {
@@ -734,6 +809,7 @@ struct PetAvatarView: View {
 
 struct YearContributionHeatmap: View {
     let days: [UsageMetricsDay]
+    let colorPreset: HeatmapColorPreset
     @State private var hoveredCell: HoveredHeatmapCell?
     private let calendar: Calendar
     private let lookup: [Date: UsageMetricsDay]
@@ -747,8 +823,9 @@ struct YearContributionHeatmap: View {
         return formatter
     }()
 
-    init(days: [UsageMetricsDay]) {
+    init(days: [UsageMetricsDay], colorPreset: HeatmapColorPreset) {
         self.days = days
+        self.colorPreset = colorPreset
         var calendar = Calendar(identifier: .gregorian)
         calendar.firstWeekday = 2
         self.calendar = calendar
@@ -813,7 +890,7 @@ struct YearContributionHeatmap: View {
                                 let day = lookup[calendar.startOfDay(for: date)] ?? .empty(for: date)
                                 GeometryReader { cellGeometry in
                                     RoundedRectangle(cornerRadius: 2, style: .continuous)
-                                        .fill(HeatmapPalette.color(for: day.heatmapLevel))
+                                        .fill(HeatmapPalette.color(for: day.heatmapLevel, preset: colorPreset))
                                         .frame(width: cellWidth, height: cellHeight)
                                         .contentShape(Rectangle())
                                         .onHover { isHovered in
@@ -869,6 +946,7 @@ struct YearContributionHeatmap: View {
 
 struct MonthCalendarHeatmap: View {
     let days: [UsageMetricsDay]
+    let colorPreset: HeatmapColorPreset
     @State private var hoveredCell: HoveredHeatmapCell?
 
     private static let tooltipDateFormatter: DateFormatter = {
@@ -946,6 +1024,7 @@ struct MonthCalendarHeatmap: View {
                                 let day = lookup[calendar.startOfDay(for: date)] ?? .empty(for: date)
                                 HeatmapCalendarCell(
                                     day: day,
+                                    colorPreset: colorPreset,
                                     isCurrentMonth: calendar.isDate(date, equalTo: displayedMonth, toGranularity: .month),
                                     cornerRadius: 10,
                                     dayFontSize: 12,
@@ -996,6 +1075,7 @@ struct MonthCalendarHeatmap: View {
 
 struct WeekStripHeatmap: View {
     let days: [UsageMetricsDay]
+    let colorPreset: HeatmapColorPreset
     @State private var hoveredCell: HoveredHeatmapCell?
     private let calendar: Calendar
     private let sortedDays: [UsageMetricsDay]
@@ -1007,8 +1087,9 @@ struct WeekStripHeatmap: View {
         return formatter
     }()
 
-    init(days: [UsageMetricsDay]) {
+    init(days: [UsageMetricsDay], colorPreset: HeatmapColorPreset) {
         self.days = days
+        self.colorPreset = colorPreset
         var calendar = Calendar(identifier: .gregorian)
         calendar.firstWeekday = 2
         self.calendar = calendar
@@ -1030,6 +1111,7 @@ struct WeekStripHeatmap: View {
 
                         HeatmapCalendarCell(
                             day: day,
+                            colorPreset: colorPreset,
                             isCurrentMonth: true,
                             cornerRadius: 12,
                             dayFontSize: 22,
@@ -1077,7 +1159,7 @@ struct WeekStripHeatmap: View {
     }
 }
 
-enum HeatmapRange: String, CaseIterable, Identifiable {
+enum HeatmapRange: String, CaseIterable, Identifiable, Codable, CustomStringConvertible {
     case year
     case month
     case week
@@ -1106,6 +1188,7 @@ enum HeatmapRange: String, CaseIterable, Identifiable {
         }
     }
 
+    var description: String { title }
 }
 
 private struct HoveredHeatmapCell: Equatable {
@@ -1115,6 +1198,7 @@ private struct HoveredHeatmapCell: Equatable {
 
 private struct HeatmapCalendarCell: View {
     let day: UsageMetricsDay
+    let colorPreset: HeatmapColorPreset
     let isCurrentMonth: Bool
     let cornerRadius: CGFloat
     let dayFontSize: CGFloat
@@ -1125,7 +1209,7 @@ private struct HeatmapCalendarCell: View {
         GeometryReader { geometry in
             ZStack {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(HeatmapPalette.color(for: day.heatmapLevel).opacity(isCurrentMonth ? 1 : 0.52))
+                    .fill(HeatmapPalette.color(for: day.heatmapLevel, preset: colorPreset).opacity(isCurrentMonth ? 1 : 0.52))
 
                 Text("\(Calendar.current.component(.day, from: day.date))")
                     .font(.system(size: dayFontSize, weight: .medium, design: .rounded))
@@ -1142,14 +1226,19 @@ private struct HeatmapCalendarCell: View {
 
 private struct HeatmapTooltip: View {
     let text: String
+    var width: CGFloat? = nil
+    var multilineAlignment: TextAlignment = .center
 
     var body: some View {
         Text(text)
             .font(.system(size: 10, weight: .medium, design: .rounded))
             .foregroundStyle(.white)
-            .multilineTextAlignment(.center)
+            .multilineTextAlignment(multilineAlignment)
+            .lineLimit(nil)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
+            .frame(width: width, alignment: multilineAlignment == .leading ? .leading : .center)
+            .fixedSize(horizontal: false, vertical: true)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(Color.black.opacity(0.92))
@@ -1170,7 +1259,186 @@ private extension Calendar {
     }
 }
 
+private struct SettingsCardView: View {
+    @ObservedObject var store: UsageStore
+    @ObservedObject var settingsStore: AppSettingsStore
+    let onClose: () -> Void
+
+    private var settings: AppSettings { settingsStore.settings }
+    private var availableDefaultAgentOptions: [DefaultAgentPreference] {
+        DefaultAgentPreference.options(for: store.multiAgentSnapshot.agents.filter(\.isAvailable).map(\.agent))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("设置")
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+
+                Spacer()
+
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .frame(width: 22, height: 22)
+                        .background(Circle().fill(.white.opacity(0.08)))
+                }
+                .buttonStyle(.plain)
+            }
+
+            settingPickerRow(
+                title: "默认展示 Agent",
+                options: availableDefaultAgentOptions,
+                selection: Binding(
+                    get: { settings.defaultAgent },
+                    set: { settingsStore.updateDefaultAgent($0) }
+                )
+            )
+
+            settingPickerRow(
+                title: "默认热力图范围",
+                options: HeatmapRange.allCases,
+                selection: Binding(
+                    get: { settings.defaultHeatmapRange },
+                    set: { settingsStore.updateDefaultHeatmapRange($0) }
+                )
+            )
+
+            settingPickerRow(
+                title: "刷新频率",
+                options: RefreshIntervalOption.allCases,
+                selection: Binding(
+                    get: { settings.refreshInterval },
+                    set: { settingsStore.updateRefreshInterval($0) }
+                )
+            )
+
+            Toggle(isOn: Binding(
+                get: { settings.showsHotspot },
+                set: { settingsStore.updateShowsHotspot($0) }
+            )) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("显示顶部热点")
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.9))
+                    Text("关闭后仅从菜单栏图标展开面板")
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.48))
+                }
+            }
+            .toggleStyle(.switch)
+
+            VStack(alignment: .leading, spacing: 8) {
+                sectionTitle("主题色")
+                swatchRow(
+                    selections: ThemeTintPreset.allCases,
+                    currentValue: settings.themeTint,
+                    color: { Color(hex: $0.hex) },
+                    label: { $0.title }
+                ) { settingsStore.updateThemeTint($0) }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                sectionTitle("热力图颜色")
+                swatchRow(
+                    selections: HeatmapColorPreset.allCases,
+                    currentValue: settings.heatmapColor,
+                    color: { Color(hex: $0.hex) },
+                    label: { $0.title }
+                ) { settingsStore.updateHeatmapColor($0) }
+                HeatmapLegend(colorPreset: settings.heatmapColor)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+        }
+        .padding(16)
+        .frame(width: 320)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.black.opacity(0.92))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(.white.opacity(0.08), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.32), radius: 16, y: 10)
+        .onAppear(perform: sanitizeDefaultAgentPreference)
+        .onChange(of: availableDefaultAgentOptions) { _, _ in
+            sanitizeDefaultAgentPreference()
+        }
+    }
+
+    private func sectionTitle(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 11, weight: .bold, design: .rounded))
+            .foregroundStyle(.white.opacity(0.9))
+    }
+
+    private func settingPickerRow<Value: Hashable & Identifiable>(
+        title: String,
+        options: [Value],
+        selection: Binding<Value>
+    ) -> some View where Value: CustomStringConvertible {
+        HStack(alignment: .center) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.9))
+
+            Spacer()
+
+            Picker(title, selection: selection) {
+                ForEach(options) { option in
+                    Text(option.description).tag(option)
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .tint(.white.opacity(0.88))
+        }
+    }
+
+    private func sanitizeDefaultAgentPreference() {
+        guard availableDefaultAgentOptions.contains(settings.defaultAgent) == false else { return }
+        settingsStore.updateDefaultAgent(.all)
+    }
+
+    private func swatchRow<Selection: Identifiable & Equatable>(
+        selections: [Selection],
+        currentValue: Selection,
+        color: @escaping (Selection) -> Color,
+        label: @escaping (Selection) -> String,
+        onSelect: @escaping (Selection) -> Void
+    ) -> some View {
+        HStack(spacing: 8) {
+            ForEach(selections) { option in
+                Button {
+                    onSelect(option)
+                } label: {
+                    VStack(spacing: 6) {
+                        Circle()
+                            .fill(color(option))
+                            .frame(width: 18, height: 18)
+                            .overlay(
+                                Circle()
+                                    .stroke(.white.opacity(option == currentValue ? 0.95 : 0.18), lineWidth: option == currentValue ? 2 : 1)
+                            )
+                        Text(label(option))
+                            .font(.system(size: 9, weight: .medium, design: .rounded))
+                            .foregroundStyle(.white.opacity(option == currentValue ? 0.9 : 0.5))
+                            .lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+}
+
 struct HeatmapLegend: View {
+    let colorPreset: HeatmapColorPreset
+
     var body: some View {
         HStack(spacing: 6) {
             Text("Less")
@@ -1178,7 +1446,7 @@ struct HeatmapLegend: View {
                 .foregroundStyle(.white.opacity(0.34))
             ForEach(0..<5, id: \.self) { level in
                 Circle()
-                    .fill(HeatmapPalette.color(for: level))
+                    .fill(HeatmapPalette.color(for: level, preset: colorPreset))
                     .frame(width: 10, height: 10)
             }
             Text("More")
@@ -1205,19 +1473,14 @@ struct ChromeButtonStyle: ButtonStyle {
 }
 
 enum HeatmapPalette {
-    static func color(for level: Int) -> Color {
-        switch level {
-        case 0:
-            Color(hex: "#324858")
-        case 1:
-            Color(hex: "#2f7f6d")
-        case 2:
-            Color(hex: "#369b7f")
-        case 3:
-            Color(hex: "#39ad89")
-        default:
-            Color(hex: "#3cc796")
-        }
+    static func color(for level: Int, preset: HeatmapColorPreset) -> Color {
+        Color(hex: hex(for: level, preset: preset))
+    }
+
+    static func hex(for level: Int, preset: HeatmapColorPreset) -> String {
+        let colors = preset.gradientHexes
+        let safeIndex = max(0, min(level, colors.count - 1))
+        return colors[safeIndex]
     }
 }
 
