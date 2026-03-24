@@ -153,7 +153,7 @@ final class StatusItemController {
 
     private func update(snapshot: UsageSnapshot) {
         statusItem.button?.title = ""
-        statusItem.button?.toolTip = snapshot.primaryLimit.map { "CodexTray • 5h \($0.shortLabel)" } ?? "CodexTray"
+        statusItem.button?.toolTip = snapshot.primaryLimit.map { "AgentTray • 5h \($0.shortLabel)" } ?? "AgentTray"
     }
 }
 

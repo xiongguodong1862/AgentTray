@@ -10,6 +10,8 @@
     <string>CodexTray</string>
     <key>CFBundleIdentifier</key>
     <string>com.xgod.codextray</string>
+    <key>CFBundleIconFile</key>
+    <string>CodexTray</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>

@@ -3,9 +3,22 @@
 <plist version="1.0">
 <dict>
 	<key>files</key>
-	<dict/>
+	<dict>
+		<key>Resources/CodexTray.icns</key>
+		<data>
+		LxFbNWaJeKUIJVy0P75CHr4iSmk=
+		</data>
+	</dict>
 	<key>files2</key>
-	<dict/>
+	<dict>
+		<key>Resources/CodexTray.icns</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			VKPGH65h5bDrLwDnS1NtjzufU44iXOnuf2Muc6cDQyc=
+			</data>
+		</dict>
+	</dict>
 	<key>rules</key>
 	<dict>
 		<key>^Resources/</key>
