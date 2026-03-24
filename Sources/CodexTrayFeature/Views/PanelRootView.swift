@@ -77,7 +77,7 @@ struct PanelRootView: View {
 
                 Spacer()
 
-                Text("等级\(pet.level)")
+                Text("Lv.\(pet.level)")
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white.opacity(0.54))
             }
@@ -392,6 +392,18 @@ enum UsageDisplayFormatter {
         return "\(netLines)"
     }
 
+    static func heatmapTooltipText(
+        for day: UsageMetricsDay,
+        dateFormatter: DateFormatter,
+        durationFormatter: (Int) -> String = DurationFormatter.string
+    ) -> String {
+        [
+            dateFormatter.string(from: day.date),
+            "\(day.dialogs) 次对话",
+            "活跃 \(durationFormatter(day.activeMinutes))",
+        ].joined(separator: "\n")
+    }
+
     static func resetHint(for date: Date?, timeZone: TimeZone = .current) -> String? {
         guard let date else { return nil }
         let formatter = DateFormatter()
@@ -417,6 +429,35 @@ enum UsageLimitProgressStyle {
             return "#F5C46B"
         default:
             return "#FF7A6A"
+        }
+    }
+}
+
+enum HeatmapLabelFormatter {
+    static func yearMonthLabel(for week: [Date], previousWeek: [Date]?, calendar: Calendar) -> String {
+        guard
+            let monthStart = week.first(where: { calendar.component(.day, from: $0) <= 7 }),
+            previousWeekContainsSameMonth(previousWeek, as: monthStart, calendar: calendar) == false
+        else {
+            return ""
+        }
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "M月"
+        return formatter.string(from: monthStart)
+    }
+
+    private static func previousWeekContainsSameMonth(
+        _ previousWeek: [Date]?,
+        as date: Date,
+        calendar: Calendar
+    ) -> Bool {
+        guard let previousWeek else { return false }
+        let month = calendar.component(.month, from: date)
+        let year = calendar.component(.year, from: date)
+        return previousWeek.contains {
+            calendar.component(.month, from: $0) == month && calendar.component(.year, from: $0) == year
         }
     }
 }
@@ -515,10 +556,19 @@ struct YearContributionHeatmap: View {
                 HStack(spacing: spacing) {
                     ForEach(Array(weeks.enumerated()), id: \.offset) { index, week in
                         VStack(spacing: spacing) {
-                            Text(monthLabel(for: index))
-                                .font(.system(size: 8, weight: .medium, design: .rounded))
-                                .foregroundStyle(.white.opacity(0.34))
-                                .frame(height: 12)
+                            Color.clear
+                                .frame(width: cellWidth, height: 12)
+                                .overlay(alignment: .leading) {
+                                    let label = monthLabel(for: index)
+                                    if !label.isEmpty {
+                                        Text(label)
+                                            .font(.system(size: 8, weight: .medium, design: .rounded))
+                                            .foregroundStyle(.white.opacity(0.34))
+                                            .frame(width: 22, alignment: .leading)
+                                            .fixedSize(horizontal: true, vertical: false)
+                                            .allowsHitTesting(false)
+                                    }
+                                }
 
                             ForEach(week, id: \.self) { date in
                                 let day = lookup[calendar.startOfDay(for: date)] ?? .empty(for: date)
@@ -566,17 +616,15 @@ struct YearContributionHeatmap: View {
     }
 
     private func monthLabel(for index: Int) -> String {
-        let date = weeks[index].first ?? startDate
-        let day = calendar.component(.day, from: date)
-        guard day <= 7 else { return "" }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_CN")
-        formatter.dateFormat = "M月"
-        return formatter.string(from: date)
+        HeatmapLabelFormatter.yearMonthLabel(
+            for: weeks[index],
+            previousWeek: index > 0 ? weeks[index - 1] : nil,
+            calendar: calendar
+        )
     }
 
     private func tooltipText(for day: UsageMetricsDay) -> String {
-        "\(Self.tooltipDateFormatter.string(from: day.date))\n\(day.dialogs) 次对话"
+        UsageDisplayFormatter.heatmapTooltipText(for: day, dateFormatter: Self.tooltipDateFormatter)
     }
 }
 
@@ -703,7 +751,7 @@ struct MonthCalendarHeatmap: View {
     }
 
     private func tooltipText(for day: UsageMetricsDay) -> String {
-        "\(Self.tooltipDateFormatter.string(from: day.date))\n\(day.dialogs) 次对话"
+        UsageDisplayFormatter.heatmapTooltipText(for: day, dateFormatter: Self.tooltipDateFormatter)
     }
 }
 
@@ -786,7 +834,7 @@ struct WeekStripHeatmap: View {
     }
 
     private func tooltipText(for day: UsageMetricsDay) -> String {
-        "\(Self.tooltipDateFormatter.string(from: day.date))\n\(day.dialogs) 次对话"
+        UsageDisplayFormatter.heatmapTooltipText(for: day, dateFormatter: Self.tooltipDateFormatter)
     }
 }
 

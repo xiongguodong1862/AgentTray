@@ -78,10 +78,102 @@ final class UsageCalculatorsTests: XCTestCase {
         XCTAssertEqual(UsageDisplayFormatter.netChangeLabel(for: -8), "-8")
     }
 
+    func testUsageDisplayFormatterFormatsHeatmapTooltipText() {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.timeZone = TimeZone(secondsFromGMT: 8 * 60 * 60)
+        formatter.dateFormat = "yyyy年M月d日"
+        let day = UsageMetricsDay(
+            date: Date(timeIntervalSince1970: 1_711_244_800),
+            dialogs: 3,
+            activeMinutes: 42,
+            modifiedFiles: 6,
+            addedLines: 150,
+            deletedLines: 22
+        )
+
+        XCTAssertEqual(
+            UsageDisplayFormatter.heatmapTooltipText(for: day, dateFormatter: formatter),
+            """
+            2024年3月24日
+            3 次对话
+            活跃 42分
+            """
+        )
+    }
+
+    func testUsageDisplayFormatterFormatsHeatmapTooltipTextForZeroMetrics() {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.timeZone = TimeZone(secondsFromGMT: 8 * 60 * 60)
+        formatter.dateFormat = "yyyy年M月d日"
+        let day = UsageMetricsDay.empty(for: Date(timeIntervalSince1970: 1_711_244_800))
+
+        XCTAssertEqual(
+            UsageDisplayFormatter.heatmapTooltipText(for: day, dateFormatter: formatter),
+            """
+            2024年3月24日
+            0 次对话
+            活跃 0分
+            """
+        )
+    }
+
     func testUsageDisplayFormatterFormatsResetHint() {
         let date = Date(timeIntervalSince1970: 1_700_000_000)
         let timeZone = TimeZone(secondsFromGMT: 8 * 60 * 60) ?? .current
         XCTAssertEqual(UsageDisplayFormatter.resetHint(for: date, timeZone: timeZone), "11/15 06:13 重置")
         XCTAssertNil(UsageDisplayFormatter.resetHint(for: nil))
+    }
+
+    func testHeatmapLabelFormatterShowsMonthOnlyOnFirstWeekColumn() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 8 * 60 * 60) ?? .current
+        calendar.firstWeekday = 2
+
+        let aprilFirstWeek = [
+            date(2024, 4, 1, calendar: calendar),
+            date(2024, 4, 2, calendar: calendar),
+            date(2024, 4, 3, calendar: calendar),
+            date(2024, 4, 4, calendar: calendar),
+            date(2024, 4, 5, calendar: calendar),
+            date(2024, 4, 6, calendar: calendar),
+            date(2024, 4, 7, calendar: calendar),
+        ]
+        let aprilSecondWeek = [
+            date(2024, 4, 8, calendar: calendar),
+            date(2024, 4, 9, calendar: calendar),
+            date(2024, 4, 10, calendar: calendar),
+            date(2024, 4, 11, calendar: calendar),
+            date(2024, 4, 12, calendar: calendar),
+            date(2024, 4, 13, calendar: calendar),
+            date(2024, 4, 14, calendar: calendar),
+        ]
+        let mayBoundaryWeek = [
+            date(2024, 4, 29, calendar: calendar),
+            date(2024, 4, 30, calendar: calendar),
+            date(2024, 5, 1, calendar: calendar),
+            date(2024, 5, 2, calendar: calendar),
+            date(2024, 5, 3, calendar: calendar),
+            date(2024, 5, 4, calendar: calendar),
+            date(2024, 5, 5, calendar: calendar),
+        ]
+
+        XCTAssertEqual(
+            HeatmapLabelFormatter.yearMonthLabel(for: aprilFirstWeek, previousWeek: nil, calendar: calendar),
+            "4月"
+        )
+        XCTAssertEqual(
+            HeatmapLabelFormatter.yearMonthLabel(for: aprilSecondWeek, previousWeek: aprilFirstWeek, calendar: calendar),
+            ""
+        )
+        XCTAssertEqual(
+            HeatmapLabelFormatter.yearMonthLabel(for: mayBoundaryWeek, previousWeek: aprilSecondWeek, calendar: calendar),
+            "5月"
+        )
+    }
+
+    private func date(_ year: Int, _ month: Int, _ day: Int, calendar: Calendar) -> Date {
+        calendar.date(from: DateComponents(year: year, month: month, day: day)) ?? .now
     }
 }
