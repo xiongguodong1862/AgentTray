@@ -154,6 +154,106 @@ final class ParsingTests: XCTestCase {
     }
 
     @MainActor
+    func testUsageStoreUsesCachedMultiAgentSnapshotImmediatelyOnInit() throws {
+        let tempDirectory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDirectory) }
+
+        let codexCacheURL = tempDirectory.appending(path: "usage-snapshot.json")
+        let multiCacheURL = tempDirectory.appending(path: "multi-agent-snapshot.json")
+        let codexCacheStore = SnapshotCacheStore(cacheURL: codexCacheURL)
+        let multiCacheStore = MultiAgentSnapshotCacheStore(cacheURL: multiCacheURL)
+
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let day = Calendar.current.startOfDay(for: date)
+        let codexSnapshot = UsageSnapshot(
+            generatedAt: date,
+            primaryLimit: nil,
+            secondaryLimit: nil,
+            today: .empty(for: day),
+            lastSevenDays: (0..<7).map { offset in
+                UsageMetricsDay(
+                    date: Calendar.current.date(byAdding: .day, value: offset - 6, to: day) ?? day,
+                    dialogs: 0,
+                    activeMinutes: 0,
+                    modifiedFiles: 0,
+                    addedLines: 0,
+                    deletedLines: 0
+                )
+            },
+            lastYearDays: (0..<365).map { offset in
+                UsageMetricsDay(
+                    date: Calendar.current.date(byAdding: .day, value: offset - 364, to: day) ?? day,
+                    dialogs: 0,
+                    activeMinutes: 0,
+                    modifiedFiles: 0,
+                    addedLines: 0,
+                    deletedLines: 0
+                )
+            },
+            pet: PetProgress(level: 0, stage: .cursorEgg, currentXP: 0, nextLevelXP: 180, todayXP: 0),
+            hasSourceData: true
+        )
+        try codexCacheStore.save(codexSnapshot)
+
+        let claudeSnapshot = AgentSnapshot(
+            agent: .claude,
+            generatedAt: date,
+            status: AgentStatusSummary(primaryLabel: "今日 Token", primaryValue: "2.5K"),
+            today: UsageMetricsDay(
+                date: day,
+                dialogs: 2,
+                activeMinutes: 20,
+                modifiedFiles: 0,
+                addedLines: 0,
+                deletedLines: 0,
+                tokenUsage: 2500,
+                toolCalls: 2,
+                customActivityScore: 24,
+                interactionLabel: "会话",
+                sourceAgents: ["Claude"]
+            ),
+            lastSevenDays: [],
+            lastYearDays: [],
+            currentModel: "claude-sonnet-4-5",
+            lastActiveAt: date,
+            environment: AgentEnvironmentSummary(
+                runtimeLabel: "Claude Code",
+                authLabel: nil,
+                currentModel: "claude-sonnet-4-5",
+                dataSourceLabel: "~/.claude/projects",
+                updatedAt: date
+            ),
+            isAvailable: true
+        )
+        let cachedMulti = MultiAgentSnapshot(
+            generatedAt: date,
+            agents: [claudeSnapshot],
+            mostRecentlyActiveAgent: .claude,
+            focusedAgent: .claude,
+            pet: PetProgress(level: 3, stage: .pixelKitten, currentXP: 20, nextLevelXP: 265, todayXP: 5),
+            xpBreakdown: [AgentXPBreakdown(agent: .claude, todayXP: 5, totalXP: 20)],
+            todaySummary: MultiAgentTodaySummary(totalSessions: 2, totalActiveMinutes: 20, totalTokenUsage: 2500, totalToolCalls: 2),
+            lastSevenDays: [],
+            lastMonthDays: [],
+            lastYearDays: []
+        )
+        try multiCacheStore.save(cachedMulti)
+
+        let store = UsageStore(
+            cacheStore: codexCacheStore,
+            multiAgentCacheStore: multiCacheStore,
+            agentCacheStore: AgentSnapshotCacheStore(directoryURL: tempDirectory.appending(path: "agent-snapshots", directoryHint: .isDirectory))
+        )
+
+        XCTAssertEqual(store.multiAgentSnapshot.mostRecentlyActiveAgent, .claude)
+        XCTAssertEqual(store.multiAgentSnapshot.focusedAgent, .claude)
+        XCTAssertEqual(store.multiAgentSnapshot.todaySummary.totalTokenUsage, 2500)
+        XCTAssertEqual(store.focusedAgent, .claude)
+    }
+
+    @MainActor
     func testUsageStoreExposesBuilderEnvironmentInfoImmediately() {
         let environmentInfo = CodexEnvironmentInfo(
             environmentLabel: "Extension",

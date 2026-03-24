@@ -1,5 +1,40 @@
 import Foundation
 
+public enum AgentKind: String, Codable, CaseIterable, Identifiable, Sendable {
+    case all
+    case codex
+    case claude
+    case gemini
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .all:
+            "All"
+        case .codex:
+            "Codex"
+        case .claude:
+            "Claude"
+        case .gemini:
+            "Gemini"
+        }
+    }
+
+    public var iconSymbolName: String {
+        switch self {
+        case .all:
+            "square.grid.2x2.fill"
+        case .codex:
+            "terminal.fill"
+        case .claude:
+            "sparkles"
+        case .gemini:
+            "diamond.fill"
+        }
+    }
+}
+
 public struct RateLimitWindow: Codable, Equatable, Sendable {
     public let usedPercent: Double
     public let windowMinutes: Int
@@ -21,15 +56,49 @@ public struct UsageMetricsDay: Codable, Equatable, Identifiable, Sendable {
     public let modifiedFiles: Int
     public let addedLines: Int
     public let deletedLines: Int
+    public let tokenUsage: Int
+    public let toolCalls: Int
+    public let customActivityScore: Double?
+    public let interactionLabel: String
+    public let sourceAgents: [String]
 
     public var id: Date { date }
+
+    public init(
+        date: Date,
+        dialogs: Int,
+        activeMinutes: Int,
+        modifiedFiles: Int,
+        addedLines: Int,
+        deletedLines: Int,
+        tokenUsage: Int = 0,
+        toolCalls: Int = 0,
+        customActivityScore: Double? = nil,
+        interactionLabel: String = "对话",
+        sourceAgents: [String] = []
+    ) {
+        self.date = date
+        self.dialogs = dialogs
+        self.activeMinutes = activeMinutes
+        self.modifiedFiles = modifiedFiles
+        self.addedLines = addedLines
+        self.deletedLines = deletedLines
+        self.tokenUsage = tokenUsage
+        self.toolCalls = toolCalls
+        self.customActivityScore = customActivityScore
+        self.interactionLabel = interactionLabel
+        self.sourceAgents = sourceAgents
+    }
 
     public var netLines: Int {
         addedLines - deletedLines
     }
 
     public var activityScore: Double {
-        ActivityScoreCalculator.score(
+        if let customActivityScore {
+            return customActivityScore
+        }
+        return ActivityScoreCalculator.score(
             dialogs: dialogs,
             activeMinutes: activeMinutes,
             modifiedFiles: modifiedFiles,
@@ -49,8 +118,167 @@ public struct UsageMetricsDay: Codable, Equatable, Identifiable, Sendable {
             activeMinutes: 0,
             modifiedFiles: 0,
             addedLines: 0,
-            deletedLines: 0
+            deletedLines: 0,
+            tokenUsage: 0,
+            toolCalls: 0,
+            customActivityScore: nil,
+            interactionLabel: "对话",
+            sourceAgents: []
         )
+    }
+}
+
+public struct AgentStatusSummary: Codable, Equatable, Sendable {
+    public let primaryLabel: String
+    public let primaryValue: String
+    public let primaryProgress: Double?
+    public let secondaryLabel: String?
+    public let secondaryValue: String?
+    public let secondaryProgress: Double?
+
+    public init(
+        primaryLabel: String,
+        primaryValue: String,
+        primaryProgress: Double? = nil,
+        secondaryLabel: String? = nil,
+        secondaryValue: String? = nil,
+        secondaryProgress: Double? = nil
+    ) {
+        self.primaryLabel = primaryLabel
+        self.primaryValue = primaryValue
+        self.primaryProgress = primaryProgress
+        self.secondaryLabel = secondaryLabel
+        self.secondaryValue = secondaryValue
+        self.secondaryProgress = secondaryProgress
+    }
+}
+
+public struct AgentEnvironmentSummary: Codable, Equatable, Sendable {
+    public let runtimeLabel: String
+    public let authLabel: String?
+    public let currentModel: String?
+    public let dataSourceLabel: String
+    public let updatedAt: Date?
+
+    public init(
+        runtimeLabel: String,
+        authLabel: String? = nil,
+        currentModel: String? = nil,
+        dataSourceLabel: String,
+        updatedAt: Date? = nil
+    ) {
+        self.runtimeLabel = runtimeLabel
+        self.authLabel = authLabel
+        self.currentModel = currentModel
+        self.dataSourceLabel = dataSourceLabel
+        self.updatedAt = updatedAt
+    }
+}
+
+public struct AgentSnapshot: Codable, Equatable, Sendable, Identifiable {
+    public let agent: AgentKind
+    public let generatedAt: Date
+    public let status: AgentStatusSummary
+    public let today: UsageMetricsDay
+    public let lastSevenDays: [UsageMetricsDay]
+    public let lastYearDays: [UsageMetricsDay]
+    public let currentModel: String?
+    public let lastActiveAt: Date?
+    public let environment: AgentEnvironmentSummary
+    public let isAvailable: Bool
+
+    public var id: AgentKind { agent }
+
+    public init(
+        agent: AgentKind,
+        generatedAt: Date,
+        status: AgentStatusSummary,
+        today: UsageMetricsDay,
+        lastSevenDays: [UsageMetricsDay],
+        lastYearDays: [UsageMetricsDay],
+        currentModel: String?,
+        lastActiveAt: Date?,
+        environment: AgentEnvironmentSummary,
+        isAvailable: Bool
+    ) {
+        self.agent = agent
+        self.generatedAt = generatedAt
+        self.status = status
+        self.today = today
+        self.lastSevenDays = lastSevenDays
+        self.lastYearDays = lastYearDays
+        self.currentModel = currentModel
+        self.lastActiveAt = lastActiveAt
+        self.environment = environment
+        self.isAvailable = isAvailable
+    }
+}
+
+public struct AgentXPBreakdown: Codable, Equatable, Sendable, Identifiable {
+    public let agent: AgentKind
+    public let todayXP: Int
+    public let totalXP: Int
+
+    public var id: AgentKind { agent }
+}
+
+public struct MultiAgentTodaySummary: Codable, Equatable, Sendable {
+    public let totalSessions: Int
+    public let totalActiveMinutes: Int
+    public let totalTokenUsage: Int
+    public let totalToolCalls: Int
+
+    public init(
+        totalSessions: Int,
+        totalActiveMinutes: Int,
+        totalTokenUsage: Int,
+        totalToolCalls: Int
+    ) {
+        self.totalSessions = totalSessions
+        self.totalActiveMinutes = totalActiveMinutes
+        self.totalTokenUsage = totalTokenUsage
+        self.totalToolCalls = totalToolCalls
+    }
+}
+
+public struct MultiAgentSnapshot: Codable, Equatable, Sendable {
+    public let generatedAt: Date
+    public let agents: [AgentSnapshot]
+    public let mostRecentlyActiveAgent: AgentKind?
+    public let focusedAgent: AgentKind
+    public let pet: PetProgress
+    public let xpBreakdown: [AgentXPBreakdown]
+    public let todaySummary: MultiAgentTodaySummary
+    public let lastSevenDays: [UsageMetricsDay]
+    public let lastMonthDays: [UsageMetricsDay]
+    public let lastYearDays: [UsageMetricsDay]
+
+    public init(
+        generatedAt: Date,
+        agents: [AgentSnapshot],
+        mostRecentlyActiveAgent: AgentKind?,
+        focusedAgent: AgentKind,
+        pet: PetProgress,
+        xpBreakdown: [AgentXPBreakdown],
+        todaySummary: MultiAgentTodaySummary,
+        lastSevenDays: [UsageMetricsDay],
+        lastMonthDays: [UsageMetricsDay],
+        lastYearDays: [UsageMetricsDay]
+    ) {
+        self.generatedAt = generatedAt
+        self.agents = agents
+        self.mostRecentlyActiveAgent = mostRecentlyActiveAgent
+        self.focusedAgent = focusedAgent
+        self.pet = pet
+        self.xpBreakdown = xpBreakdown
+        self.todaySummary = todaySummary
+        self.lastSevenDays = lastSevenDays
+        self.lastMonthDays = lastMonthDays
+        self.lastYearDays = lastYearDays
+    }
+
+    public func snapshot(for agent: AgentKind) -> AgentSnapshot? {
+        agents.first(where: { $0.agent == agent })
     }
 }
 

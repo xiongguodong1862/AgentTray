@@ -3,11 +3,18 @@ import SwiftUI
 struct PanelRootView: View {
     @ObservedObject var store: UsageStore
     let onQuit: () -> Void
-    var onHeatmapRangeChange: (HeatmapRange) -> Void
+    var onHeatmapRangeChange: (HeatmapRange, AgentKind) -> Void
     @State private var heatmapRange: HeatmapRange = .year
 
     private var islandHeight: CGFloat { ScreenLayout.collapsedIslandSize.height }
     private var panelWidth: CGFloat { ScreenLayout.panelWidth }
+    private var selectedAgent: AgentKind { store.selectedAgent }
+    private var availableTabs: [AgentKind] {
+        let available = store.multiAgentSnapshot.agents
+            .filter(\.isAvailable)
+            .map(\.agent)
+        return [.all] + available
+    }
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -24,24 +31,14 @@ struct PanelRootView: View {
                 .frame(width: panelWidth, height: islandHeight)
 
                 VStack(alignment: .leading, spacing: 18) {
-                    HStack(alignment: .top, spacing: 18) {
-                        petColumn
-                            .frame(width: 220)
+                    tabBar
 
-                        VerticalSectionDivider()
-
-                        usageBlock
-                            .frame(width: 190)
-
-                        VerticalSectionDivider()
-
-                        todayBlock
-                            .frame(maxWidth: .infinity)
+                    switch selectedAgent {
+                    case .all:
+                        allTabContent
+                    case .codex, .claude, .gemini:
+                        agentTabContent(for: selectedAgent)
                     }
-
-                    HorizontalSectionDivider()
-
-                    yearHeatmapArea
 
                     HorizontalSectionDivider()
 
@@ -58,18 +55,90 @@ struct PanelRootView: View {
         .clipShape(ExpandedIslandContainer())
         .clipped()
         .onAppear {
-            onHeatmapRangeChange(heatmapRange)
+            if availableTabs.contains(selectedAgent) == false {
+                store.selectAgent(.all)
+            }
+            onHeatmapRangeChange(heatmapRange, selectedAgent)
         }
         .onChange(of: heatmapRange) { _, newValue in
-            onHeatmapRangeChange(newValue)
+            onHeatmapRangeChange(newValue, selectedAgent)
+        }
+        .onChange(of: selectedAgent) { _, newValue in
+            onHeatmapRangeChange(heatmapRange, newValue)
         }
     }
 
-    private var petColumn: some View {
-        let pet = store.snapshot.pet
+    private var tabBar: some View {
+        HStack(spacing: 10) {
+            ForEach(availableTabs) { agent in
+                Button {
+                    store.selectAgent(agent)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: agent.iconSymbolName)
+                            .font(.system(size: 10, weight: .semibold))
+                        Text(agent.displayName)
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    }
+                    .foregroundStyle(agent == selectedAgent ? .white : .white.opacity(0.62))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(
+                        Capsule()
+                            .fill(agent == selectedAgent ? .white.opacity(0.14) : .white.opacity(0.06))
+                    )
+                    .overlay(
+                        Capsule()
+                            .stroke(.white.opacity(agent == selectedAgent ? 0.12 : 0.04), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private var allTabContent: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top, spacing: 18) {
+                petColumn(progress: store.multiAgentSnapshot.pet, xpBreakdown: store.multiAgentSnapshot.xpBreakdown)
+                    .frame(width: 270)
+
+                VerticalSectionDivider()
+                    .frame(height: 170)
+
+                allSummaryBlock
+            }
+
+            HorizontalSectionDivider()
+
+            yearHeatmapArea(days: heatmapDays(for: .all), title: "跨 Agent 活跃趋势")
+        }
+    }
+
+    private func agentTabContent(for agent: AgentKind) -> some View {
+        let snapshot = snapshot(for: agent)
+        return VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top, spacing: 18) {
+                statusBlock(for: snapshot)
+                    .frame(width: 220)
+
+                VerticalSectionDivider()
+                    .frame(height: 150)
+
+                todayBlock(for: snapshot)
+                    .frame(maxWidth: .infinity)
+            }
+
+            HorizontalSectionDivider()
+
+            yearHeatmapArea(days: heatmapDays(for: agent), title: "\(agent.displayName) 活跃趋势")
+        }
+    }
+
+    private func petColumn(progress: PetProgress, xpBreakdown: [AgentXPBreakdown]) -> some View {
         return VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .firstTextBaseline) {
-                Text(pet.stage.displayName)
+                Text(progress.stage.displayName)
                     .font(.system(size: 17, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .lineLimit(1)
@@ -77,65 +146,96 @@ struct PanelRootView: View {
 
                 Spacer()
 
-                Text("Lv.\(pet.level)")
+                Text("Lv.\(progress.level)")
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white.opacity(0.54))
             }
 
             HStack(spacing: 14) {
-                PetAvatarView(progress: pet)
+                PetAvatarView(progress: progress)
                     .frame(width: 58, height: 58)
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("\(pet.currentXP)/\(pet.nextLevelXP)（今日经验：\(pet.todayXP)）")
+                    Text("\(progress.currentXP)/\(progress.nextLevelXP)（今日经验：\(progress.todayXP)）")
                         .font(.system(size: 10, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white.opacity(0.6))
                         .lineLimit(1)
                         .minimumScaleFactor(0.75)
 
-                    ProgressView(value: Double(pet.currentXP), total: Double(max(1, pet.nextLevelXP)))
-                        .tint(Color(hex: pet.stage.accentHex))
+                    ProgressView(value: Double(progress.currentXP), total: Double(max(1, progress.nextLevelXP)))
+                        .tint(Color(hex: progress.stage.accentHex))
                         .scaleEffect(x: 1, y: 0.8, anchor: .center)
                 }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("XP 来源")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .tracking(1.1)
+                    .foregroundStyle(.white.opacity(0.42))
+
+                Text(xpBreakdownText(from: xpBreakdown))
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.72))
+                    .lineLimit(3)
+                    .minimumScaleFactor(0.8)
             }
         }
         .padding(.top, 8)
     }
 
-    private var usageBlock: some View {
+    private var allSummaryBlock: some View {
         VStack(alignment: .leading, spacing: 18) {
-            usageRow(
-                label: "5小时余量",
-                value: store.snapshot.primaryLimit?.shortLabel ?? "--",
-                remainingPercent: store.snapshot.primaryLimit?.remainingPercent,
-                resetHint: UsageDisplayFormatter.resetHint(for: store.snapshot.primaryLimit?.resetsAt)
-            )
-            usageRow(
-                label: "本周余量",
-                value: store.snapshot.secondaryLimit?.shortLabel ?? "--",
-                remainingPercent: store.snapshot.secondaryLimit?.remainingPercent,
-                resetHint: UsageDisplayFormatter.resetHint(for: store.snapshot.secondaryLimit?.resetsAt)
-            )
+            summaryMetricRow(label: "最近活跃", value: recentAgentLabel, valueColor: .white)
+            summaryMetricRow(label: "总活跃时长", value: DurationFormatter.string(for: store.multiAgentSnapshot.todaySummary.totalActiveMinutes), valueColor: .white)
+            summaryMetricRow(label: "总会话数", value: "\(store.multiAgentSnapshot.todaySummary.totalSessions)", valueColor: .white)
+            summaryMetricRow(label: "总 Token", value: compactCount(store.multiAgentSnapshot.todaySummary.totalTokenUsage), valueColor: .white)
         }
     }
 
-    private var todayBlock: some View {
+    private func statusBlock(for snapshot: AgentSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("配额 / 状态")
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .tracking(1.3)
+                .foregroundStyle(.white.opacity(0.42))
+
+            usageRow(
+                label: snapshot.status.primaryLabel,
+                value: snapshot.status.primaryValue,
+                remainingPercent: snapshot.status.primaryProgress.map { $0 * 100 },
+                resetHint: nil
+            )
+
+            if let secondaryLabel = snapshot.status.secondaryLabel,
+               let secondaryValue = snapshot.status.secondaryValue {
+                usageRow(
+                    label: secondaryLabel,
+                    value: secondaryValue,
+                    remainingPercent: snapshot.status.secondaryProgress.map { $0 * 100 },
+                    resetHint: nil
+                )
+            }
+        }
+    }
+
+    private func todayBlock(for snapshot: AgentSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("今日")
                 .font(.system(size: 10, weight: .bold, design: .rounded))
                 .tracking(1.3)
                 .foregroundStyle(.white.opacity(0.42))
 
-            ForEach(todayRows) { row in
+            ForEach(todayRows(for: snapshot)) { row in
                 metricRowView(row)
             }
         }
     }
 
-    private var yearHeatmapArea: some View {
+    private func yearHeatmapArea(days: [UsageMetricsDay], title: String) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 10) {
-                Text("活跃趋势")
+                Text(title)
                     .font(.system(size: 10, weight: .bold, design: .rounded))
                     .tracking(1.3)
                     .foregroundStyle(.white.opacity(0.42))
@@ -149,10 +249,10 @@ struct PanelRootView: View {
                 }
                 .pickerStyle(.menu)
                 .labelsHidden()
-                .tint(.white.opacity(0.82))
+                    .tint(.white.opacity(0.82))
             }
 
-            heatmapContent
+            heatmapContent(days: days)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             HeatmapLegend()
@@ -163,7 +263,8 @@ struct PanelRootView: View {
     }
 
     private var footerRow: some View {
-        HStack(spacing: 12) {
+        let environment = environmentSummary(for: selectedAgent)
+        return HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
                 if let errorMessage = store.errorMessage {
                     Text(errorMessage)
@@ -172,10 +273,10 @@ struct PanelRootView: View {
                         .lineLimit(2)
                 }
 
-                Text(store.environmentInfo.summaryLine)
+                Text(environmentSummaryLine(environment))
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white.opacity(0.68))
-                    .lineLimit(1)
+                    .lineLimit(3)
                     .minimumScaleFactor(0.8)
             }
 
@@ -247,23 +348,134 @@ struct PanelRootView: View {
         )
     }
 
-    private var todayRows: [MetricRow] {
-        [
-            MetricRow(label: "对话数", value: "\(store.snapshot.today.dialogs)", valueColor: .white),
-            MetricRow(label: "活跃时长", value: DurationFormatter.string(for: store.snapshot.today.activeMinutes), valueColor: .white),
-            MetricRow(label: "净变更", value: UsageDisplayFormatter.netChangeLabel(for: store.snapshot.today.netLines), valueColor: .white),
-        ]
+    private func todayRows(for snapshot: AgentSnapshot) -> [MetricRow] {
+        switch snapshot.agent {
+        case .codex:
+            [
+                MetricRow(label: "对话数", value: "\(snapshot.today.dialogs)", valueColor: .white),
+                MetricRow(label: "活跃时长", value: DurationFormatter.string(for: snapshot.today.activeMinutes), valueColor: .white),
+                MetricRow(label: "净变更", value: UsageDisplayFormatter.netChangeLabel(for: snapshot.today.netLines), valueColor: .white),
+            ]
+        case .claude:
+            [
+                MetricRow(label: "今日会话", value: "\(snapshot.today.dialogs)", valueColor: .white),
+                MetricRow(label: "活跃时长", value: DurationFormatter.string(for: snapshot.today.activeMinutes), valueColor: .white),
+                MetricRow(label: "今日 Token", value: compactCount(snapshot.today.tokenUsage), valueColor: .white),
+            ]
+        case .gemini:
+            [
+                MetricRow(label: "今日会话", value: "\(snapshot.today.dialogs)", valueColor: .white),
+                MetricRow(label: "今日 Token", value: compactCount(snapshot.today.tokenUsage), valueColor: .white),
+                MetricRow(label: "工具调用", value: "\(snapshot.today.toolCalls)", valueColor: .white),
+            ]
+        case .all:
+            [
+                MetricRow(label: "总会话数", value: "\(store.multiAgentSnapshot.todaySummary.totalSessions)", valueColor: .white),
+                MetricRow(label: "总活跃时长", value: DurationFormatter.string(for: store.multiAgentSnapshot.todaySummary.totalActiveMinutes), valueColor: .white),
+                MetricRow(label: "总 Token", value: compactCount(store.multiAgentSnapshot.todaySummary.totalTokenUsage), valueColor: .white),
+            ]
+        }
     }
 
     @ViewBuilder
-    private var heatmapContent: some View {
+    private func heatmapContent(days: [UsageMetricsDay]) -> some View {
         switch heatmapRange {
         case .year:
-            YearContributionHeatmap(days: store.snapshot.lastYearDays)
+            YearContributionHeatmap(days: days)
         case .month:
-            MonthCalendarHeatmap(days: store.snapshot.lastYearDays)
+            MonthCalendarHeatmap(days: days)
         case .week:
-            WeekStripHeatmap(days: store.snapshot.lastSevenDays)
+            WeekStripHeatmap(days: Array(days.suffix(7)))
+        }
+    }
+
+    private func snapshot(for agent: AgentKind) -> AgentSnapshot {
+        store.multiAgentSnapshot.snapshot(for: agent)
+            ?? AgentSnapshot.empty(agent: agent, generatedAt: .now, runtimeLabel: agent.displayName, dataSourceLabel: "--")
+    }
+
+    private func heatmapDays(for agent: AgentKind) -> [UsageMetricsDay] {
+        switch agent {
+        case .all:
+            return switch heatmapRange {
+            case .year: store.multiAgentSnapshot.lastYearDays
+            case .month: store.multiAgentSnapshot.lastMonthDays
+            case .week: store.multiAgentSnapshot.lastSevenDays
+            }
+        case .codex, .claude, .gemini:
+            let snapshot = snapshot(for: agent)
+            return switch heatmapRange {
+            case .year: snapshot.lastYearDays
+            case .month: Array(snapshot.lastYearDays.suffix(30))
+            case .week: snapshot.lastSevenDays
+            }
+        }
+    }
+
+    private var recentAgentLabel: String {
+        guard let agent = store.multiAgentSnapshot.mostRecentlyActiveAgent else {
+            return "暂无"
+        }
+        return agent.displayName
+    }
+
+    private func xpBreakdownText(from entries: [AgentXPBreakdown]) -> String {
+        if entries.isEmpty {
+            return "暂无经验变动"
+        }
+        return entries
+            .map { "\($0.agent.displayName) +\($0.todayXP)" }
+            .joined(separator: "  ·  ")
+    }
+
+    private func environmentSummary(for agent: AgentKind) -> AgentEnvironmentSummary {
+        switch agent {
+        case .all:
+            return AgentEnvironmentSummary(
+                runtimeLabel: "Multi-Agent",
+                authLabel: nil,
+                currentModel: nil,
+                dataSourceLabel: "已接入 \(store.multiAgentSnapshot.agents.filter(\.isAvailable).count) 个 Agent",
+                updatedAt: store.multiAgentSnapshot.generatedAt
+            )
+        case .codex, .claude, .gemini:
+            return snapshot(for: agent).environment
+        }
+    }
+
+    private func environmentSummaryLine(_ environment: AgentEnvironmentSummary) -> String {
+        var parts = ["当前环境：\(environment.runtimeLabel)"]
+        if let currentModel = environment.currentModel, !currentModel.isEmpty {
+            parts.append("当前模型：\(currentModel)")
+        }
+        if let authLabel = environment.authLabel, !authLabel.isEmpty {
+            parts.append("认证方式：\(authLabel)")
+        }
+        parts.append("数据源：\(environment.dataSourceLabel)")
+        return parts.joined(separator: "  ·  ")
+    }
+
+    private func compactCount(_ value: Int) -> String {
+        if value >= 1_000_000 {
+            return String(format: "%.1fM", Double(value) / 1_000_000)
+        }
+        if value >= 1_000 {
+            return String(format: "%.1fK", Double(value) / 1_000)
+        }
+        return "\(value)"
+    }
+
+    private func summaryMetricRow(label: String, value: String, valueColor: Color) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(label)
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .foregroundStyle(.white.opacity(0.46))
+
+            Spacer()
+
+            Text(value)
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .foregroundStyle(valueColor)
         }
     }
 }
@@ -298,17 +510,13 @@ struct IslandHeaderBar: View {
             }
 
             HStack {
-                HStack(spacing: standalone ? 6 : 8) {
-                    Text(store.snapshot.primaryLimit.map { "5小时 \($0.shortLabel)" } ?? "5小时 --")
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.92))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.82)
-                }
+                Text(store.focusedAgent.displayName)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.92))
 
                 Spacer()
 
-                Text(store.snapshot.secondaryLimit.map { "本周 \($0.shortLabel)" } ?? "本周 --")
+                Text(headerStatusText)
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white.opacity(0.92))
                     .lineLimit(1)
@@ -320,6 +528,19 @@ struct IslandHeaderBar: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(width: width, height: height)
+    }
+
+    private var headerStatusText: String {
+        let agent = store.focusedAgent
+        guard let snapshot = store.multiAgentSnapshot.snapshot(for: agent) else {
+            return "--"
+        }
+        if let _ = snapshot.status.secondaryLabel,
+           let secondaryValue = snapshot.status.secondaryValue,
+           agent == .codex {
+            return "\(snapshot.status.primaryValue) / \(secondaryValue)"
+        }
+        return "\(snapshot.status.primaryLabel) \(snapshot.status.primaryValue)"
     }
 }
 
@@ -405,11 +626,21 @@ enum UsageDisplayFormatter {
         dateFormatter: DateFormatter,
         durationFormatter: (Int) -> String = DurationFormatter.string
     ) -> String {
-        [
+        var lines = [
             dateFormatter.string(from: day.date),
-            "\(day.dialogs) 次对话",
+            "\(day.dialogs) 次\(day.interactionLabel)",
             "活跃 \(durationFormatter(day.activeMinutes))",
-        ].joined(separator: "\n")
+        ]
+        if day.tokenUsage > 0 {
+            lines.append("Token \(day.tokenUsage)")
+        }
+        if day.toolCalls > 0 {
+            lines.append("工具 \(day.toolCalls)")
+        }
+        if day.sourceAgents.isEmpty == false {
+            lines.append("来源 \(day.sourceAgents.joined(separator: " + "))")
+        }
+        return lines.joined(separator: "\n")
     }
 
     static func resetHint(for date: Date?, timeZone: TimeZone = .current) -> String? {
