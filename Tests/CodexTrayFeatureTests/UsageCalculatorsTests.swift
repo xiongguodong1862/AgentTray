@@ -62,11 +62,11 @@ final class UsageCalculatorsTests: XCTestCase {
         XCTAssertEqual(
             PetProgressExplanationFormatter.levelDescriptions(),
             [
-                "Lv.0-2: 光标蛋",
-                "Lv.3-5: 像素幼猫",
-                "Lv.6-9: 终端猫",
-                "Lv.10-14: 机甲补丁猫",
-                "Lv.15+: 刘海守护猫",
+                "Lv.0-2: 喵喵蛋",
+                "Lv.3-5: 像素喵",
+                "Lv.6-9: 终端喵",
+                "Lv.10-14: 补丁喵",
+                "Lv.15+: 守护喵",
             ]
         )
     }
@@ -100,6 +100,149 @@ final class UsageCalculatorsTests: XCTestCase {
         XCTAssertTrue(tooltip.contains("经验计算"))
         XCTAssertTrue(tooltip.contains("各 Agent 贡献"))
         XCTAssertTrue(tooltip.contains("Codex: 今日 +12 / 近一年累计 300"))
+    }
+
+    func testPetStatusFormatterReturnsRestingLineWithoutTodayXP() {
+        let progress = PetProgress(level: 2, stage: .cursorEgg, currentXP: 40, nextLevelXP: 350, todayXP: 0)
+
+        XCTAssertEqual(PetStatusFormatter.statusLine(for: progress), "打个小盹，等你开始今天的冒险")
+        XCTAssertEqual(PetStatusFormatter.indicatorHex(for: progress), "#A0AEC0")
+    }
+
+    func testPetStatusFormatterReturnsGuardianLineForHighLevelPet() {
+        let progress = PetProgress(level: 15, stage: .notchGuardian, currentXP: 18, nextLevelXP: 1_455, todayXP: 12)
+
+        XCTAssertEqual(PetStatusFormatter.statusLine(for: progress), "守护模式在线，正在盯着你的进度")
+        XCTAssertEqual(PetStatusFormatter.indicatorHex(for: progress), "#A4A7FF")
+    }
+
+    func testPetStatusFormatterUsesFasterBlinkForHigherStages() {
+        XCTAssertGreaterThan(PetStatusFormatter.blinkInterval(for: PetProgress(level: 3, stage: .pixelKitten, currentXP: 0, nextLevelXP: 1, todayXP: 1)), 3)
+        XCTAssertLessThan(PetStatusFormatter.blinkInterval(for: PetProgress(level: 15, stage: .notchGuardian, currentXP: 0, nextLevelXP: 1, todayXP: 1)), 2.2)
+    }
+
+    func testPetInteractionStyleReturnsZeroOffsetWhenNotHovered() {
+        XCTAssertEqual(
+            PetInteractionStyle.lookOffset(panelLocation: nil, avatarFrame: CGRect(x: 100, y: 100, width: 58, height: 58)),
+            .zero
+        )
+    }
+
+    func testPetInteractionStyleClampsLookOffsetWithinExpectedRange() {
+        let offset = PetInteractionStyle.lookOffset(
+            panelLocation: CGPoint(x: 999, y: -100),
+            avatarFrame: CGRect(x: 100, y: 100, width: 58, height: 58)
+        )
+
+        XCTAssertEqual(offset.width, 7.4, accuracy: 0.001)
+        XCTAssertEqual(offset.height, -5.2, accuracy: 0.001)
+    }
+
+    func testPetInteractionStyleUsesPanelCoordinatesRelativeToAvatarFrame() {
+        let offset = PetInteractionStyle.lookOffset(
+            panelLocation: CGPoint(x: 158, y: 129),
+            avatarFrame: CGRect(x: 100, y: 100, width: 58, height: 58)
+        )
+
+        XCTAssertEqual(offset.width, 0.975, accuracy: 0.001)
+        XCTAssertEqual(offset.height, 0, accuracy: 0.001)
+    }
+
+    func testPetInteractionStyleTriggersTapEasterEggForRapidTaps() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let tapDates = [
+            now.addingTimeInterval(-2.0),
+            now.addingTimeInterval(-1.4),
+            now.addingTimeInterval(-0.9),
+            now.addingTimeInterval(-0.3),
+        ]
+
+        XCTAssertTrue(PetInteractionStyle.shouldTriggerTapEasterEgg(tapDates: tapDates, now: now))
+    }
+
+    func testPetInteractionStyleIgnoresOldTapsForTapEasterEgg() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let tapDates = [
+            now.addingTimeInterval(-3.0),
+            now.addingTimeInterval(-2.7),
+            now.addingTimeInterval(-1.0),
+            now.addingTimeInterval(-0.2),
+        ]
+
+        XCTAssertFalse(PetInteractionStyle.shouldTriggerTapEasterEgg(tapDates: tapDates, now: now))
+    }
+
+    func testPetAnimationPlaybackCoordinatorReturnsNoAnimationWithoutStoredState() {
+        let progress = PetProgress(level: 4, stage: .pixelKitten, currentXP: 20, nextLevelXP: 435, todayXP: 8)
+
+        XCTAssertEqual(PetAnimationPlaybackCoordinator.pendingAnimations(current: progress, stored: nil), [])
+    }
+
+    func testPetAnimationPlaybackCoordinatorReturnsLevelUpAnimation() {
+        let progress = PetProgress(level: 5, stage: .pixelKitten, currentXP: 20, nextLevelXP: 520, todayXP: 8)
+        let stored = PetAnimationPlaybackState(
+            presentedLevel: 4,
+            presentedStage: .pixelKitten
+        )
+
+        XCTAssertEqual(
+            PetAnimationPlaybackCoordinator.pendingAnimations(current: progress, stored: stored),
+            [.levelUp(level: 5)]
+        )
+    }
+
+    func testPetAnimationPlaybackCoordinatorReturnsEvolutionThenLevelUp() {
+        let progress = PetProgress(level: 6, stage: .terminalCat, currentXP: 10, nextLevelXP: 690, todayXP: 12)
+        let stored = PetAnimationPlaybackState(
+            presentedLevel: 5,
+            presentedStage: .pixelKitten
+        )
+
+        XCTAssertEqual(
+            PetAnimationPlaybackCoordinator.pendingAnimations(current: progress, stored: stored),
+            [
+                .evolution(from: .pixelKitten, to: .terminalCat),
+                .levelUp(level: 6),
+            ]
+        )
+    }
+
+    func testPetTapReactionUsesStageSpecificLabels() {
+        XCTAssertEqual(PetTapReaction.squint.label(for: .cursorEgg), "蛋壳眨眨")
+        XCTAssertEqual(PetTapReaction.tailFlick.label(for: .terminalCat), "终端甩尾")
+    }
+
+    func testPetEasterEggUsesStageSpecificLabels() {
+        XCTAssertEqual(PetEasterEgg.hoverNuzzle.label(for: .cursorEgg), "轻轻蹭壳")
+        XCTAssertEqual(PetEasterEgg.tapOverload.label(for: .mechPatchCat), "动力过载!")
+    }
+
+    func testPetPreviewFactoryCreatesExpectedPreviewMilestones() {
+        let previous = PetPreviewFactory.progress(for: 4, todayXP: 10)
+        let next = PetPreviewFactory.progress(for: 6, todayXP: 10)
+
+        XCTAssertEqual(
+            PetPreviewFactory.previewMilestones(from: previous, to: next),
+            [
+                .evolution(from: .pixelKitten, to: .terminalCat),
+                .levelUp(level: 6),
+            ]
+        )
+    }
+
+    func testPetDialogueLibraryProvidesAtLeastTwentyMessages() {
+        let progress = PetProgress(level: 4, stage: .pixelKitten, currentXP: 29, nextLevelXP: 520, todayXP: 120)
+
+        XCTAssertGreaterThanOrEqual(PetDialogueLibrary.messages(for: progress).count, 20)
+    }
+
+    func testPetDialogueLibraryRotatesMessagesByTick() {
+        let progress = PetProgress(level: 4, stage: .pixelKitten, currentXP: 29, nextLevelXP: 520, todayXP: 120)
+
+        XCTAssertNotEqual(
+            PetDialogueLibrary.message(for: progress, tick: 0),
+            PetDialogueLibrary.message(for: progress, tick: 1)
+        )
     }
 
     func testUsageLimitProgressStyleUsesExpectedThresholdColors() {

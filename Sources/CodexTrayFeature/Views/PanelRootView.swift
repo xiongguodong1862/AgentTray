@@ -9,6 +9,12 @@ struct PanelRootView: View {
     @State private var heatmapRange: HeatmapRange
     @State private var isPetGuideHovered = false
     @State private var isSettingsPresented = false
+    @State private var panelPointerLocation: CGPoint?
+    @State private var petAvatarFrameInPanel: CGRect = .zero
+    @State private var petPreviewProgress: PetProgress?
+    @State private var petPreviewMilestones: [PetMilestoneAnimation] = []
+    @State private var petPreviewSequence = 0
+    @State private var petDialogueTick = 0
 
     init(
         store: UsageStore,
@@ -70,18 +76,35 @@ struct PanelRootView: View {
             }
 
             if isSettingsPresented {
-                settingsOverlay
-                    .padding(.trailing, 24)
-                    .padding(.bottom, 24)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
-                    .zIndex(30)
+                ZStack(alignment: .bottomTrailing) {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            isSettingsPresented = false
+                        }
+
+                    settingsOverlay
+                        .padding(.trailing, 24)
+                        .padding(.bottom, 24)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                .zIndex(30)
             }
         }
         .frame(width: panelWidth)
         .frame(maxHeight: .infinity)
+        .coordinateSpace(name: "panel-root")
         .clipShape(ExpandedIslandContainer())
         .clipped()
+        .onContinuousHover { phase in
+            switch phase {
+            case .active(let location):
+                panelPointerLocation = location
+            case .ended:
+                panelPointerLocation = nil
+            }
+        }
         .onAppear {
             if availableTabs.contains(selectedAgent) == false {
                 store.selectAgent(.all)
@@ -97,6 +120,9 @@ struct PanelRootView: View {
         .onReceive(settingsStore.$panelPresentationSequence.dropFirst()) { _ in
             heatmapRange = settingsStore.settings.defaultHeatmapRange
             isSettingsPresented = false
+        }
+        .onReceive(Timer.publish(every: 5.6, on: .main, in: .common).autoconnect()) { _ in
+            petDialogueTick += 1
         }
         .animation(.easeOut(duration: 0.18), value: isSettingsPresented)
         .animation(.easeInOut(duration: 0.35), value: settingsStore.settings.themeTint)
@@ -171,9 +197,10 @@ struct PanelRootView: View {
     }
 
     private func petColumn(progress: PetProgress, xpBreakdown: [AgentXPBreakdown]) -> some View {
+        let displayedProgress = petPreviewProgress ?? progress
         return VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .firstTextBaseline) {
-                Text(progress.stage.displayName)
+                Text(displayedProgress.stage.displayName)
                     .font(.system(size: 17, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .lineLimit(1)
@@ -190,30 +217,66 @@ struct PanelRootView: View {
 
                 Spacer()
 
-                Text("Lv.\(progress.level)")
+                Text("Lv.\(displayedProgress.level)")
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white.opacity(0.54))
             }
 
             HStack(spacing: 14) {
-                PetAvatarView(progress: progress)
-                    .frame(width: 58, height: 58)
+                PetAvatarView(
+                    progress: displayedProgress,
+                    panelPointerLocation: panelPointerLocation,
+                    avatarFrameInPanel: petAvatarFrameInPanel,
+                    presentationSequence: settingsStore.panelPresentationSequence,
+                    previewMilestones: petPreviewMilestones,
+                    previewSequence: petPreviewSequence
+                )
+                .frame(width: 58, height: 58)
+                .background(
+                    GeometryReader { geometry in
+                            Color.clear
+                                .preference(
+                                    key: PetAvatarFramePreferenceKey.self,
+                                    value: geometry.frame(in: .named("panel-root"))
+                        )
+                    }
+                )
+                .modifier(PetDeveloperPreviewMenu(
+                    progress: progress,
+                    petPreviewProgress: $petPreviewProgress,
+                    petPreviewMilestones: $petPreviewMilestones,
+                    petPreviewSequence: $petPreviewSequence,
+                    petDialogueTick: $petDialogueTick
+                ))
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("\(progress.currentXP)/\(progress.nextLevelXP)（今日经验：\(progress.todayXP)）")
+                    Text("\(displayedProgress.currentXP)/\(displayedProgress.nextLevelXP)（今日经验：\(displayedProgress.todayXP)）")
                         .font(.system(size: 10, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white.opacity(0.6))
                         .lineLimit(1)
                         .minimumScaleFactor(0.75)
 
-                    ProgressView(value: Double(progress.currentXP), total: Double(max(1, progress.nextLevelXP)))
-                        .tint(Color(hex: progress.stage.accentHex))
+                    ProgressView(value: Double(displayedProgress.currentXP), total: Double(max(1, displayedProgress.nextLevelXP)))
+                        .tint(Color(hex: displayedProgress.stage.accentHex))
                         .scaleEffect(x: 1, y: 0.8, anchor: .center)
+
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(Color(hex: PetStatusFormatter.indicatorHex(for: displayedProgress)))
+                            .frame(width: 6, height: 6)
+                        Text(PetDialogueLibrary.message(for: displayedProgress, tick: petDialogueTick))
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.82))
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.8)
+                            .id("pet-dialogue-\(displayedProgress.level)-\(petDialogueTick)")
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
                 }
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("XP 来源")
+                Text("经验来源")
                     .font(.system(size: 10, weight: .bold, design: .rounded))
                     .tracking(1.1)
                     .foregroundStyle(.white.opacity(0.42))
@@ -226,6 +289,9 @@ struct PanelRootView: View {
             }
         }
         .padding(.top, 8)
+        .onPreferenceChange(PetAvatarFramePreferenceKey.self) { newFrame in
+            petAvatarFrameInPanel = newFrame
+        }
         .overlay(alignment: .topLeading) {
             if isPetGuideHovered {
                 HeatmapTooltip(
@@ -778,32 +844,716 @@ enum HeatmapLabelFormatter {
 
 struct PetAvatarView: View {
     let progress: PetProgress
+    let panelPointerLocation: CGPoint?
+    let avatarFrameInPanel: CGRect
+    let presentationSequence: Int
+    let previewMilestones: [PetMilestoneAnimation]
+    let previewSequence: Int
+    private let playbackStore = PetAnimationPlaybackStore()
+
+    @State private var isFloating = false
+    @State private var isBlinking = false
+    @State private var isAccessoryGlowing = false
+    @State private var isTailSwingingLeft = false
+    @State private var isPouncing = false
+    @State private var activeReaction: PetTapReaction?
+    @State private var activeEasterEgg: PetEasterEgg?
+    @State private var activeMilestone: PetMilestoneAnimation?
+    @State private var recentTapDates: [Date] = []
+    @State private var hoverTask: Task<Void, Never>?
+    @State private var milestoneTask: Task<Void, Never>?
+
+    private var palette: PetStagePalette { PetStagePalette(stage: progress.stage) }
+    private var motionProfile: PetMotionProfile { PetMotionProfile.profile(for: progress.stage) }
 
     var body: some View {
         ZStack {
-            Circle()
+            if let activeMilestone {
+                powerBurst(for: activeMilestone)
+            }
+
+            if progress.stage == .cursorEgg {
+                CatEggFace(
+                    palette: palette,
+                    lookOffset: eyeLookOffset,
+                    isBlinking: isBlinking,
+                    reaction: activeReaction,
+                    isPouncing: isPouncing
+                )
+                .frame(width: 44, height: 46)
+                .rotationEffect(.degrees(headRotationDegrees))
+                .offset(x: headLookOffset.width, y: faceYOffset + headLookOffset.height * 0.7)
+                .scaleEffect(baseAvatarScale)
+            } else {
+                TailShape()
+                    .stroke(palette.tail, style: StrokeStyle(lineWidth: progress.stage == .notchGuardian ? 5.8 : 5.2, lineCap: .round, lineJoin: .round))
+                    .frame(width: 20, height: 24)
+                    .offset(x: 17 + bodyLookOffset.width * 0.7, y: 8 + bodyLookOffset.height * 0.42)
+                    .rotationEffect(.degrees(tailRotationDegrees), anchor: .bottomLeading)
+                    .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
+                    .opacity(0.96)
+
+                CatFace(
+                    stage: progress.stage,
+                    palette: palette,
+                    isBlinking: isBlinking,
+                    isAccessoryGlowing: isAccessoryGlowing,
+                    lookOffset: eyeLookOffset,
+                    isPouncing: isPouncing,
+                    activeReaction: activeReaction
+                )
+                .frame(width: 46, height: 46)
+                .rotationEffect(.degrees(headRotationDegrees))
+                .offset(x: headLookOffset.width, y: faceYOffset + headLookOffset.height * 0.82)
+                .scaleEffect(baseAvatarScale)
+            }
+
+            if let activeMilestone {
+                MilestoneTextBanner(text: activeMilestone.bannerText)
+                    .offset(y: -58)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .offset(
+            x: isPanelHovered ? bodyLookOffset.width * 1.28 : 0,
+            y: (isFloating ? -2.3 : 2.1) + bodyLookOffset.height * 0.78
+        )
+        .animation(.easeInOut(duration: motionProfile.floatDuration).repeatForever(autoreverses: true), value: isFloating)
+        .animation(.easeInOut(duration: motionProfile.tailWagDuration).repeatForever(autoreverses: true), value: isTailSwingingLeft)
+        .animation(.spring(response: 0.32, dampingFraction: 0.72), value: isPanelHovered)
+        .animation(.spring(response: 0.24, dampingFraction: 0.48), value: isPouncing)
+        .animation(.spring(response: 0.28, dampingFraction: 0.62), value: activeReaction)
+        .animation(.spring(response: 0.32, dampingFraction: 0.64), value: activeEasterEgg)
+        .animation(.spring(response: 0.46, dampingFraction: 0.72), value: activeMilestone)
+        .onAppear {
+            isFloating = true
+            isTailSwingingLeft = true
+            scheduleBlink()
+            resolveMilestonePresentation()
+        }
+        .onChange(of: progress.level) { _, _ in
+            resolveMilestonePresentation()
+        }
+        .onChange(of: progress.stage) { _, _ in
+            resolveMilestonePresentation()
+        }
+        .onChange(of: presentationSequence) { _, _ in
+            resolveMilestonePresentation()
+        }
+        .onChange(of: previewSequence) { _, _ in
+            guard previewMilestones.isEmpty == false else { return }
+            playMilestones(previewMilestones, shouldPersist: false)
+        }
+        .onChange(of: isPanelHovered) { _, newValue in
+            if newValue {
+                scheduleLongHoverEasterEgg()
+            } else {
+                hoverTask?.cancel()
+                hoverTask = nil
+            }
+        }
+        .onTapGesture {
+            triggerTapInteraction()
+        }
+    }
+
+    private func scheduleBlink() {
+        guard progress.stage != .cursorEgg else { return }
+        Task {
+            while !Task.isCancelled {
+                let pause = UInt64(PetStatusFormatter.blinkInterval(for: progress) * 1_000_000_000)
+                try? await Task.sleep(nanoseconds: pause)
+                await MainActor.run {
+                    withAnimation(.easeInOut(duration: 0.12)) {
+                        isBlinking = true
+                    }
+                }
+                try? await Task.sleep(nanoseconds: 160_000_000)
+                await MainActor.run {
+                    withAnimation(.easeInOut(duration: 0.16)) {
+                        isBlinking = false
+                    }
+                }
+            }
+        }
+    }
+
+    private func resolveMilestonePresentation() {
+        guard previewMilestones.isEmpty else { return }
+        let stored = playbackStore.load()
+        guard let stored else {
+            playbackStore.save(PetAnimationPlaybackState(progress: progress))
+            return
+        }
+
+        let pending = PetAnimationPlaybackCoordinator.pendingAnimations(current: progress, stored: stored)
+        guard pending.isEmpty == false else {
+            if stored.presentedLevel != progress.level || stored.presentedStage != progress.stage {
+                playbackStore.save(PetAnimationPlaybackState(progress: progress))
+            }
+            return
+        }
+        playMilestones(pending, shouldPersist: true)
+    }
+
+    private func playMilestones(_ milestones: [PetMilestoneAnimation], shouldPersist: Bool) {
+        milestoneTask?.cancel()
+        milestoneTask = Task {
+            for milestone in milestones {
+                await MainActor.run {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                        activeMilestone = milestone
+                    }
+                }
+                try? await Task.sleep(nanoseconds: 1_200_000_000)
+                await MainActor.run {
+                    withAnimation(.easeOut(duration: 0.28)) {
+                        activeMilestone = nil
+                    }
+                }
+                try? await Task.sleep(nanoseconds: 180_000_000)
+            }
+
+            if shouldPersist {
+                await MainActor.run {
+                    playbackStore.save(PetAnimationPlaybackState(progress: progress))
+                }
+            }
+        }
+    }
+
+    private var lookOffset: CGSize {
+        PetInteractionStyle.lookOffset(
+            panelLocation: panelPointerLocation,
+            avatarFrame: avatarFrameInPanel
+        )
+    }
+
+    private var headLookOffset: CGSize {
+        CGSize(width: lookOffset.width * 1.8, height: lookOffset.height * 1.15)
+    }
+
+    private var eyeLookOffset: CGSize {
+        CGSize(width: lookOffset.width * 1.45, height: lookOffset.height * 1.2)
+    }
+
+    private var bodyLookOffset: CGSize {
+        CGSize(width: lookOffset.width * 1.15, height: lookOffset.height * 0.72)
+    }
+
+    private var headRotationDegrees: Double {
+        let base = isFloating ? motionProfile.idleTilt : -motionProfile.idleTilt * 0.72
+        let hoverTilt = Double(lookOffset.width) * (motionProfile.hoverTilt * 2.4)
+        let pounceTilt = isPouncing ? motionProfile.pounceTilt : 0
+        let reactionTilt = activeReaction == .headTilt ? motionProfile.reactionTilt : 0
+        let milestoneTilt = activeMilestone != nil ? 8.0 : 0
+        return base + hoverTilt + pounceTilt + reactionTilt + milestoneTilt
+    }
+
+    private var tailRotationDegrees: Double {
+        let base = isFloating ? motionProfile.tailBaseAngle : -motionProfile.tailBaseAngle * 0.6
+        let wag = isTailSwingingLeft ? motionProfile.tailWagAmplitude : -motionProfile.tailWagAmplitude
+        let hoverWave = isPanelHovered ? Double(lookOffset.width) * (motionProfile.hoverTailBias * 1.2) : 0
+        let pounceWave = isPouncing ? motionProfile.pounceTailBoost : 0
+        let reactionWave = activeReaction == .tailFlick ? (isTailSwingingLeft ? motionProfile.reactionTailBoost : -motionProfile.reactionTailBoost) : 0
+        let milestoneWave: Double = activeMilestone != nil ? (isTailSwingingLeft ? 10 : -10) : 0
+        let easterEggWave: Double = activeEasterEgg == .tapOverload ? (isTailSwingingLeft ? 24 : -24) : 0
+        return base + wag + hoverWave + pounceWave + reactionWave + milestoneWave + easterEggWave
+    }
+
+    private var faceYOffset: CGFloat {
+        let floatingOffset = isFloating ? -motionProfile.floatOffset : motionProfile.floatOffset * 0.82
+        let hoverOffset = isPanelHovered ? headLookOffset.height * 0.54 : 0
+        let pounceOffset = isPouncing ? -motionProfile.pounceLift : 0
+        let milestoneOffset: CGFloat = activeMilestone != nil ? -2.4 : 0
+        return floatingOffset + hoverOffset + pounceOffset + milestoneOffset
+    }
+
+    private var isPanelHovered: Bool {
+        panelPointerLocation != nil
+    }
+
+    private var baseAvatarScale: CGFloat {
+        if activeMilestone != nil {
+            return 1.12
+        }
+        if activeEasterEgg == .tapOverload {
+            return 1.1
+        }
+        if isPouncing {
+            return motionProfile.pounceScale
+        }
+        return isFloating ? motionProfile.idleScale : 0.98
+    }
+
+    private func triggerTapInteraction() {
+        let reaction = PetTapReaction.allCases.randomElement() ?? .squint
+        registerTap()
+
+        Task {
+            await MainActor.run {
+                withAnimation(.spring(response: 0.22, dampingFraction: 0.42)) {
+                    isPouncing = true
+                    isBlinking = false
+                    activeReaction = reaction
+                }
+            }
+            try? await Task.sleep(nanoseconds: 260_000_000)
+            await MainActor.run {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.68)) {
+                    isPouncing = false
+                }
+            }
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            await MainActor.run {
+                withAnimation(.easeOut(duration: 0.24)) {
+                    activeReaction = nil
+                }
+            }
+        }
+    }
+
+    private func registerTap() {
+        let now = Date()
+        recentTapDates = PetInteractionStyle.prunedTapDates(recentTapDates + [now], now: now)
+        if PetInteractionStyle.shouldTriggerTapEasterEgg(tapDates: recentTapDates, now: now) {
+            triggerEasterEgg(.tapOverload)
+        }
+    }
+
+    private func scheduleLongHoverEasterEgg() {
+        hoverTask?.cancel()
+        hoverTask = Task {
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            guard Task.isCancelled == false, isPanelHovered else { return }
+            await MainActor.run {
+                triggerEasterEgg(.hoverNuzzle)
+            }
+        }
+    }
+
+    private func triggerEasterEgg(_ easterEgg: PetEasterEgg) {
+        activeEasterEgg = easterEgg
+        Task {
+            try? await Task.sleep(nanoseconds: 1_250_000_000)
+            await MainActor.run {
+                withAnimation(.spring(response: 0.34, dampingFraction: 0.72)) {
+                    activeEasterEgg = nil
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func powerBurst(for milestone: PetMilestoneAnimation) -> some View {
+        ZStack {
+            BurstAuraShape(points: milestone.isEvolution ? 18 : 14, innerRatio: milestone.isEvolution ? 0.44 : 0.58)
                 .fill(
                     RadialGradient(
                         colors: [
-                            Color(hex: progress.stage.accentHex).opacity(0.95),
-                            Color(hex: "#0A1320"),
+                            palette.accent.opacity(0.88),
+                            palette.accent.opacity(0.32),
+                            .clear,
                         ],
                         center: .center,
-                        startRadius: 8,
-                        endRadius: 40
+                        startRadius: 3,
+                        endRadius: milestone.isEvolution ? 56 : 46
                     )
                 )
-                .frame(width: 58, height: 58)
+                    .frame(width: milestone.isEvolution ? 108 : 88, height: milestone.isEvolution ? 108 : 88)
+                .scaleEffect(1.02)
+                .blur(radius: milestone.isEvolution ? 2.6 : 1.8)
 
-            if progress.stage == .cursorEgg {
-                Capsule(style: .continuous)
-                    .fill(.white.opacity(0.92))
-                    .frame(width: 26, height: 34)
-            } else {
-                CatFace(stage: progress.stage)
-                    .frame(width: 46, height: 46)
+            BurstAuraShape(points: milestone.isEvolution ? 12 : 10, innerRatio: 0.55)
+                .stroke(.white.opacity(0.34), lineWidth: 1.4)
+                .frame(width: milestone.isEvolution ? 96 : 74, height: milestone.isEvolution ? 96 : 74)
+                .scaleEffect(0.98)
+                .blur(radius: 0.6)
+        }
+        .overlay(alignment: .top) {
+            if milestone.isLevelUp {
+                RisingMilestoneText(text: "LEVEL UP")
+                    .offset(y: -16)
             }
         }
+    }
+}
+
+enum PetStatusFormatter {
+    static func statusLine(for progress: PetProgress) -> String {
+        if progress.level >= 15 {
+            return "守护模式在线，正在盯着你的进度"
+        }
+        if progress.todayXP >= 40 {
+            return "兴奋摇尾巴，今天练级很顺"
+        }
+        if progress.todayXP >= 15 {
+            return "踩着节奏巡逻中，陪你继续写"
+        }
+        if progress.todayXP > 0 {
+            return "已经醒啦，正在等下一次加经验"
+        }
+        return "打个小盹，等你开始今天的冒险"
+    }
+
+    static func indicatorHex(for progress: PetProgress) -> String {
+        progress.todayXP == 0 ? "#A0AEC0" : progress.stage.accentHex
+    }
+
+    static func blinkInterval(for progress: PetProgress) -> Double {
+        switch progress.stage {
+        case .cursorEgg:
+            100
+        case .pixelKitten:
+            3.2
+        case .terminalCat:
+            2.8
+        case .mechPatchCat:
+            2.4
+        case .notchGuardian:
+            2.1
+        }
+    }
+}
+
+struct PetStagePalette {
+    let accent: Color
+    let backdrop: Color
+    let fur: Color
+    let innerEar: Color
+    let muzzle: Color
+    let nose: Color
+    let tail: Color
+    let accessory: Color
+
+    init(stage: PetStage) {
+        switch stage {
+        case .cursorEgg:
+            accent = Color(hex: "#79D0FF")
+            backdrop = Color(hex: "#19344F")
+            fur = Color(hex: "#F7FBFF")
+            innerEar = Color(hex: "#B9E5FF")
+            muzzle = Color(hex: "#FFFFFF")
+            nose = Color(hex: "#FFB7C8")
+            tail = Color(hex: "#EAF7FF")
+            accessory = Color(hex: "#7DD8FF")
+        case .pixelKitten:
+            accent = Color(hex: "#75E59A")
+            backdrop = Color(hex: "#173628")
+            fur = Color(hex: "#FFF6EC")
+            innerEar = Color(hex: "#FFBFC7")
+            muzzle = Color(hex: "#FFFDF6")
+            nose = Color(hex: "#FF9DAF")
+            tail = Color(hex: "#FFF0D8")
+            accessory = Color(hex: "#7EF0A5")
+        case .terminalCat:
+            accent = Color(hex: "#F5C46B")
+            backdrop = Color(hex: "#3A2611")
+            fur = Color(hex: "#FFE7B8")
+            innerEar = Color(hex: "#FFD7A1")
+            muzzle = Color(hex: "#FFF3D9")
+            nose = Color(hex: "#E99A83")
+            tail = Color(hex: "#F5D289")
+            accessory = Color(hex: "#8CF4B1")
+        case .mechPatchCat:
+            accent = Color(hex: "#FF8B6A")
+            backdrop = Color(hex: "#411C18")
+            fur = Color(hex: "#FFE0D8")
+            innerEar = Color(hex: "#FFB7A5")
+            muzzle = Color(hex: "#FFF0E9")
+            nose = Color(hex: "#F58F87")
+            tail = Color(hex: "#FFD0C3")
+            accessory = Color(hex: "#FF956C")
+        case .notchGuardian:
+            accent = Color(hex: "#A4A7FF")
+            backdrop = Color(hex: "#1D2248")
+            fur = Color(hex: "#EEF0FF")
+            innerEar = Color(hex: "#C8CBFF")
+            muzzle = Color(hex: "#FFFFFF")
+            nose = Color(hex: "#C9B8FF")
+            tail = Color(hex: "#E4E6FF")
+            accessory = Color(hex: "#B6BAFF")
+        }
+    }
+}
+
+struct PetMotionProfile {
+    let idleTilt: Double
+    let hoverTilt: Double
+    let pounceTilt: Double
+    let reactionTilt: Double
+    let tailBaseAngle: Double
+    let tailWagAmplitude: Double
+    let reactionTailBoost: Double
+    let pounceTailBoost: Double
+    let hoverTailBias: Double
+    let pounceLift: CGFloat
+    let pounceScale: CGFloat
+    let idleScale: CGFloat
+    let floatDuration: Double
+    let tailWagDuration: Double
+    let floatOffset: CGFloat
+
+    static func profile(for stage: PetStage) -> PetMotionProfile {
+        switch stage {
+        case .cursorEgg:
+            PetMotionProfile(idleTilt: 4.4, hoverTilt: 1.1, pounceTilt: 7, reactionTilt: 5, tailBaseAngle: 0, tailWagAmplitude: 0, reactionTailBoost: 0, pounceTailBoost: 0, hoverTailBias: 0, pounceLift: 3.8, pounceScale: 1.07, idleScale: 1.03, floatDuration: 2.35, tailWagDuration: 0.7, floatOffset: 2.2)
+        case .pixelKitten:
+            PetMotionProfile(idleTilt: 2.8, hoverTilt: 0.95, pounceTilt: 6, reactionTilt: 12, tailBaseAngle: 8, tailWagAmplitude: 19, reactionTailBoost: 26, pounceTailBoost: 10, hoverTailBias: 1.6, pounceLift: 4.2, pounceScale: 1.09, idleScale: 1.04, floatDuration: 2.1, tailWagDuration: 0.55, floatOffset: 2.1)
+        case .terminalCat:
+            PetMotionProfile(idleTilt: 2.2, hoverTilt: 0.82, pounceTilt: 5.6, reactionTilt: 10, tailBaseAngle: 7, tailWagAmplitude: 16, reactionTailBoost: 22, pounceTailBoost: 9, hoverTailBias: 1.4, pounceLift: 4, pounceScale: 1.08, idleScale: 1.03, floatDuration: 2.2, tailWagDuration: 0.62, floatOffset: 2.0)
+        case .mechPatchCat:
+            PetMotionProfile(idleTilt: 1.8, hoverTilt: 0.74, pounceTilt: 4.8, reactionTilt: 8, tailBaseAngle: 6, tailWagAmplitude: 14, reactionTailBoost: 20, pounceTailBoost: 8, hoverTailBias: 1.2, pounceLift: 3.6, pounceScale: 1.07, idleScale: 1.02, floatDuration: 2.35, tailWagDuration: 0.68, floatOffset: 1.8)
+        case .notchGuardian:
+            PetMotionProfile(idleTilt: 1.3, hoverTilt: 0.62, pounceTilt: 4.2, reactionTilt: 7, tailBaseAngle: 5, tailWagAmplitude: 12, reactionTailBoost: 16, pounceTailBoost: 7, hoverTailBias: 1.0, pounceLift: 3.2, pounceScale: 1.06, idleScale: 1.01, floatDuration: 2.5, tailWagDuration: 0.74, floatOffset: 1.6)
+        }
+    }
+}
+
+struct PetAnimationPlaybackState: Codable, Equatable, Sendable {
+    let presentedLevel: Int
+    let presentedStage: PetStage
+
+    init(presentedLevel: Int, presentedStage: PetStage) {
+        self.presentedLevel = presentedLevel
+        self.presentedStage = presentedStage
+    }
+
+    init(progress: PetProgress) {
+        presentedLevel = progress.level
+        presentedStage = progress.stage
+    }
+}
+
+struct PetAnimationPlaybackStore {
+    private let userDefaults: UserDefaults
+    private let storageKey: String
+
+    init(
+        userDefaults: UserDefaults = .standard,
+        storageKey: String = "CodexTray.pet-animation-playback"
+    ) {
+        self.userDefaults = userDefaults
+        self.storageKey = storageKey
+    }
+
+    func load() -> PetAnimationPlaybackState? {
+        guard let data = userDefaults.data(forKey: storageKey) else { return nil }
+        return try? JSONDecoder().decode(PetAnimationPlaybackState.self, from: data)
+    }
+
+    func save(_ state: PetAnimationPlaybackState) {
+        guard let data = try? JSONEncoder().encode(state) else { return }
+        userDefaults.set(data, forKey: storageKey)
+    }
+}
+
+enum PetMilestoneAnimation: Equatable {
+    case levelUp(level: Int)
+    case evolution(from: PetStage, to: PetStage)
+
+    var label: String {
+        switch self {
+        case .levelUp(let level):
+            "升级到 Lv.\(level)"
+        case .evolution(_, let to):
+            "进化成\(to.displayName)"
+        }
+    }
+
+    var bannerText: String {
+        switch self {
+        case .levelUp(let level):
+            "Lv.\(level)"
+        case .evolution(_, let to):
+            to.displayName
+        }
+    }
+
+    var isEvolution: Bool {
+        if case .evolution = self {
+            return true
+        }
+        return false
+    }
+
+    var isLevelUp: Bool {
+        if case .levelUp = self {
+            return true
+        }
+        return false
+    }
+}
+
+enum PetAnimationPlaybackCoordinator {
+    static func pendingAnimations(current: PetProgress, stored: PetAnimationPlaybackState?) -> [PetMilestoneAnimation] {
+        guard let stored else { return [] }
+        guard current.level >= stored.presentedLevel else { return [] }
+
+        var animations: [PetMilestoneAnimation] = []
+        if current.stage != stored.presentedStage {
+            animations.append(.evolution(from: stored.presentedStage, to: current.stage))
+        }
+        if current.level > stored.presentedLevel {
+            animations.append(.levelUp(level: current.level))
+        }
+        return animations
+    }
+}
+
+enum PetInteractionStyle {
+    static func lookOffset(panelLocation: CGPoint?, avatarFrame: CGRect) -> CGSize {
+        guard let panelLocation, avatarFrame.equalTo(.zero) == false else { return .zero }
+        let localX = panelLocation.x - avatarFrame.midX
+        let localY = panelLocation.y - avatarFrame.midY
+        // Use a larger influence radius than the avatar itself so motion reads across the whole panel.
+        let normalizedX = (localX / 220).clamped(to: -1...1)
+        let normalizedY = (localY / 140).clamped(to: -1...1)
+        return CGSize(width: normalizedX * 7.4, height: normalizedY * 5.2)
+    }
+
+    static func prunedTapDates(_ tapDates: [Date], now: Date) -> [Date] {
+        tapDates.filter { now.timeIntervalSince($0) <= 2.4 }
+    }
+
+    static func shouldTriggerTapEasterEgg(tapDates: [Date], now: Date) -> Bool {
+        prunedTapDates(tapDates, now: now).count >= 4
+    }
+}
+
+enum PetTapReaction: CaseIterable {
+    case squint
+    case headTilt
+    case tailFlick
+
+    func label(for stage: PetStage) -> String {
+        switch self {
+        case .squint:
+            return stage == .cursorEgg ? "蛋壳眨眨" : "眯眼!"
+        case .headTilt:
+            return stage == .notchGuardian ? "侧首注视" : "歪头?"
+        case .tailFlick:
+            return stage == .terminalCat ? "终端甩尾" : "甩尾!"
+        }
+    }
+}
+
+enum PetEasterEgg: Equatable {
+    case hoverNuzzle
+    case tapOverload
+
+    func label(for stage: PetStage) -> String {
+        switch self {
+        case .hoverNuzzle:
+            return stage == .cursorEgg ? "轻轻蹭壳" : "蹭蹭你"
+        case .tapOverload:
+            return stage == .mechPatchCat ? "动力过载!" : "开心过载!"
+        }
+    }
+}
+
+enum PetPreviewFactory {
+    static let previewLevels: [Int] = [0, 3, 6, 10, 15]
+
+    static func progress(for level: Int, todayXP: Int) -> PetProgress {
+        let totalXP = (0..<max(0, level)).reduce(0) { $0 + PetProgressCalculator.xpNeeded(for: $1) }
+        let levelXP = max(12, PetProgressCalculator.xpNeeded(for: level) / 6)
+        return PetProgressCalculator.progress(totalXP: totalXP + levelXP, todayXP: todayXP)
+    }
+
+    static func previewMilestones(from previous: PetProgress, to next: PetProgress) -> [PetMilestoneAnimation] {
+        guard previous != next else { return [] }
+        var milestones: [PetMilestoneAnimation] = []
+        if previous.stage != next.stage {
+            milestones.append(.evolution(from: previous.stage, to: next.stage))
+        }
+        if previous.level != next.level {
+            milestones.append(.levelUp(level: next.level))
+        }
+        return milestones
+    }
+}
+
+enum PetDialogueLibrary {
+    static func messages(for progress: PetProgress) -> [String] {
+        let common = [
+            "你写代码，我在旁边给你加油。",
+            "今天也一起把 bug 赶跑吧。",
+            "慢一点没关系，我们稳稳推进。",
+            "这段写完就算一次漂亮升级。",
+            "我在盯着进度，你别怕。",
+            "辛苦啦，先把这一小段做好。",
+            "你负责输出，我负责可爱。",
+            "再来一点点，经验条会动的。",
+            "我觉得你马上就要写顺了。",
+            "别急，我陪你一起磨过去。",
+            "这一行改得不错，继续。",
+            "看起来今天状态很能打。",
+            "遇到难题时，先深呼吸一下。",
+            "小猫判断：你完全可以。",
+            "再提交一次，我们就更强了。",
+            "今天也要把灵感攒满。",
+            "先搞定一个点，就是胜利。",
+            "你动手的时候，我就在认真看着。",
+            "把今天的经验都赚回来。",
+            "别担心，我感觉这题有戏。",
+        ]
+
+        let stageSpecific: [String]
+        switch progress.stage {
+        case .cursorEgg:
+            stageSpecific = [
+                "蛋壳里暖暖的，我在等你带我孵化。",
+                "再多一点经验，我就要破壳看看世界了。",
+                "轻轻敲一敲，今天也能长大一点。",
+                "壳里听见键盘声，就会很安心。",
+            ]
+        case .pixelKitten:
+            stageSpecific = [
+                "像素小爪已经准备好陪跑了。",
+                "今天的 commit 闻起来像成长。",
+                "有我在，你可以再大胆试一次。",
+                "再赚点 XP，我就想冲向下一形态。",
+            ]
+        case .terminalCat:
+            stageSpecific = [
+                "终端窗口亮起来，我也跟着精神了。",
+                "这次输出看起来很专业，喵。",
+                "给我一段漂亮日志，我能高兴半天。",
+                "继续敲，我来帮你镇场子。",
+            ]
+        case .mechPatchCat:
+            stageSpecific = [
+                "补丁装填完毕，准备冲刺。",
+                "动力核心已经预热，继续推进。",
+                "今天这股执行力，很机甲。",
+                "修完这个点，我们一起闪闪发光。",
+            ]
+        case .notchGuardian:
+            stageSpecific = [
+                "守护模式已启动，你只管往前写。",
+                "这局面我罩着，你大胆一点。",
+                "现在的你，很像能独当一面的开发者。",
+                "进化到这里了，我们就更不能怂。",
+            ]
+        }
+
+        if progress.todayXP == 0 {
+            return [
+                "我刚醒，等你带我开工。",
+                "今天第一点经验，要不要现在就拿下？",
+                "还没开张呢，我先趴一会儿。",
+            ] + stageSpecific + common
+        }
+        return stageSpecific + common
+    }
+
+    static func message(for progress: PetProgress, tick: Int) -> String {
+        let lines = messages(for: progress)
+        guard lines.isEmpty == false else { return "" }
+        let safeTick = max(0, tick)
+        let index = (safeTick + progress.level + max(0, progress.todayXP / 5)) % lines.count
+        return lines[index]
     }
 }
 
@@ -1484,71 +2234,504 @@ enum HeatmapPalette {
     }
 }
 
+struct CatEggFace: View {
+    let palette: PetStagePalette
+    let lookOffset: CGSize
+    let isBlinking: Bool
+    let reaction: PetTapReaction?
+    let isPouncing: Bool
+
+    var body: some View {
+        ZStack {
+            Triangle()
+                .fill(palette.fur)
+                .frame(width: 11, height: 11)
+                .offset(x: -8.5, y: -12)
+            Triangle()
+                .fill(palette.fur)
+                .frame(width: 11, height: 11)
+                .offset(x: 8.5, y: -12)
+
+            Capsule(style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [palette.fur, palette.fur.opacity(0.9)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .frame(width: 28, height: 37)
+                .overlay(alignment: .topLeading) {
+                    Circle()
+                        .fill(.white.opacity(0.6))
+                        .frame(width: 8, height: 8)
+                        .blur(radius: 0.8)
+                        .offset(x: 5, y: 5)
+                }
+                .overlay {
+                    EggCrackShape()
+                        .stroke(palette.accessory.opacity(0.55), style: StrokeStyle(lineWidth: 1.4, lineCap: .round))
+                        .frame(width: 16, height: 8)
+                        .offset(y: 2)
+                }
+
+            HStack(spacing: 8) {
+                eggEye
+                eggEye
+            }
+            .offset(x: lookOffset.width * 2.6, y: -1 + lookOffset.height * 1.7)
+
+            RoundedRectangle(cornerRadius: 2.5, style: .continuous)
+                .fill(palette.nose)
+                .frame(width: reaction == .headTilt ? 8 : 6, height: 3.5)
+                .offset(x: lookOffset.width * 1.35, y: 6 + lookOffset.height * 0.68)
+        }
+        .scaleEffect(isPouncing ? 1.06 : 1)
+    }
+
+    private var eggEye: some View {
+        ZStack {
+            Capsule(style: .continuous)
+                .fill(.white.opacity(0.96))
+                .frame(width: 7.4, height: isBlinking || reaction == .squint ? 1.6 : 5.8)
+            Circle()
+                .fill(Color.black.opacity(0.82))
+                .frame(width: 2.5, height: 2.5)
+                .offset(
+                    x: isBlinking || reaction == .squint ? 0 : lookOffset.width * 0.22,
+                    y: isBlinking || reaction == .squint ? 0 : lookOffset.height * 0.16
+                )
+                .opacity(isBlinking || reaction == .squint ? 0 : 1)
+        }
+    }
+}
+
 struct CatFace: View {
     let stage: PetStage
+    let palette: PetStagePalette
+    let isBlinking: Bool
+    let isAccessoryGlowing: Bool
+    let lookOffset: CGSize
+    let isPouncing: Bool
+    let activeReaction: PetTapReaction?
 
     var body: some View {
         ZStack {
             Color.clear
             ear(offsetX: -10)
             ear(offsetX: 10)
-            Circle()
-                .fill(.white.opacity(0.94))
-                .frame(width: 34, height: 30)
-                .offset(y: 6)
-            HStack(spacing: 9) {
-                Circle().fill(.black.opacity(0.78)).frame(width: 4, height: 4)
-                Circle().fill(.black.opacity(0.78)).frame(width: 4, height: 4)
+            headBase
+            muzzle
+            whiskers
+            HStack(spacing: eyeSpacing) {
+                eye
+                eye
             }
-            .offset(y: 4)
+            .offset(x: lookOffset.width * 2.4, y: eyeYOffset + lookOffset.height * 1.35)
 
-            RoundedRectangle(cornerRadius: 3)
-                .fill(.pink.opacity(0.84))
-                .frame(width: 7, height: 4)
-                .offset(y: 10)
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(palette.nose)
+                .frame(width: activeReaction == .headTilt ? 8 : 6.5, height: 4)
+                .offset(x: lookOffset.width * 1.2, y: 9 + lookOffset.height * 0.6)
 
             accessory
         }
     }
 
+    private var headBase: some View {
+        Group {
+            switch stage {
+            case .pixelKitten:
+                Circle()
+                    .fill(palette.fur)
+                    .frame(width: 34, height: 31)
+                    .offset(y: 5)
+            case .terminalCat:
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(palette.fur)
+                    .frame(width: 36, height: 29)
+                    .offset(y: 5)
+            case .mechPatchCat:
+                AngularCatHead()
+                    .fill(palette.fur)
+                    .frame(width: 38, height: 31)
+                    .offset(y: 5)
+            case .notchGuardian:
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .fill(palette.fur)
+                    .frame(width: 34, height: 31)
+                    .offset(y: 5)
+            case .cursorEgg:
+                EmptyView()
+            }
+        }
+        .overlay {
+            if stage == .mechPatchCat {
+                AngularCatHead()
+                    .stroke(palette.accessory.opacity(0.55), lineWidth: 1)
+                    .frame(width: 38, height: 31)
+                    .offset(y: 5)
+            }
+        }
+        .scaleEffect(x: isPouncing ? 1.04 : 1, y: activeReaction == .squint ? 0.94 : (isPouncing ? 0.97 : 1))
+    }
+
+    private var muzzle: some View {
+        Capsule(style: .continuous)
+            .fill(palette.muzzle)
+            .frame(width: stage == .terminalCat ? 18 : 16, height: stage == .mechPatchCat ? 10 : 11)
+            .offset(y: 11)
+    }
+
+    private var whiskers: some View {
+        Group {
+            if stage != .mechPatchCat {
+                whiskerSide(direction: -1)
+                whiskerSide(direction: 1)
+            }
+        }
+    }
+
+    private func whiskerSide(direction: CGFloat) -> some View {
+        VStack(spacing: 2) {
+            Rectangle().fill(Color.black.opacity(0.18)).frame(width: 8, height: 1)
+            Rectangle().fill(Color.black.opacity(0.18)).frame(width: 7, height: 1)
+        }
+        .offset(x: direction * 13, y: 10)
+        .rotationEffect(.degrees(direction < 0 ? -8 : 8))
+    }
+
     private func ear(offsetX: CGFloat) -> some View {
         Triangle()
-            .fill(.white.opacity(0.94))
-            .frame(width: 10, height: 10)
-            .offset(x: offsetX, y: -5)
+            .fill(palette.fur)
+            .frame(width: earSize.width, height: earSize.height)
+            .overlay {
+                Triangle()
+                    .fill(palette.innerEar)
+                    .frame(width: earSize.width * 0.52, height: earSize.height * 0.52)
+                    .offset(y: 1)
+            }
+            .offset(x: offsetX, y: earOffsetY)
+            .rotationEffect(.degrees(offsetX < 0 ? leftEarRotation : rightEarRotation))
+    }
+
+    private var eye: some View {
+        CatEye(
+            tint: stage == .terminalCat ? palette.accessory : Color.black,
+            lookOffset: lookOffset,
+            isBlinking: isBlinking || activeReaction == .squint,
+            isWide: isPouncing
+        )
+    }
+
+    private var eyeSpacing: CGFloat {
+        stage == .notchGuardian ? 10 : 8.5
+    }
+
+    private var eyeYOffset: CGFloat {
+        stage == .terminalCat ? 2.5 : 4.2
+    }
+
+    private var earSize: CGSize {
+        switch stage {
+        case .pixelKitten:
+            CGSize(width: 11, height: 12)
+        case .terminalCat:
+            CGSize(width: 10, height: 11)
+        case .mechPatchCat:
+            CGSize(width: 12, height: 12)
+        case .notchGuardian:
+            CGSize(width: 10, height: 14)
+        case .cursorEgg:
+            CGSize(width: 10, height: 10)
+        }
+    }
+
+    private var earOffsetY: CGFloat {
+        switch stage {
+        case .notchGuardian:
+            -9
+        case .mechPatchCat:
+            -7
+        default:
+            -6
+        }
+    }
+
+    private var leftEarRotation: Double {
+        let base = stage == .notchGuardian ? -12.0 : -7.0
+        return base + (isAccessoryGlowing ? -3.0 : 2.0)
+    }
+
+    private var rightEarRotation: Double {
+        let base = stage == .notchGuardian ? 12.0 : 7.0
+        return base + (isAccessoryGlowing ? 3.0 : -2.0)
     }
 
     @ViewBuilder
     private var accessory: some View {
         switch stage {
         case .pixelKitten:
-            Image(systemName: "sparkles")
-                .font(.system(size: 7, weight: .bold))
-                .foregroundStyle(Color(hex: "#75E59A"))
-                .offset(x: 12, y: -10)
+            Circle()
+                .fill(palette.accessory.opacity(0.9))
+                .frame(width: 5, height: 5)
+                .overlay {
+                    Circle().stroke(.white.opacity(0.5), lineWidth: 0.8)
+                }
+                .offset(x: 12, y: -8)
+                .scaleEffect(isAccessoryGlowing ? 1.18 : 0.94)
         case .terminalCat:
-            RoundedRectangle(cornerRadius: 3)
-                .fill(Color(hex: "#0E2233"))
-                .frame(width: 16, height: 10)
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(Color(hex: "#10261A"))
+                .frame(width: 18, height: 11)
                 .overlay {
                     Text(">")
                         .font(.system(size: 6, weight: .bold, design: .monospaced))
-                        .foregroundStyle(Color(hex: "#75E59A"))
+                        .foregroundStyle(palette.accessory)
                 }
-                .offset(y: -7)
+                .offset(y: -4)
+                .scaleEffect(isAccessoryGlowing ? 1.08 : 0.98)
         case .mechPatchCat:
-            Image(systemName: "gearshape.fill")
-                .font(.system(size: 8, weight: .bold))
-                .foregroundStyle(Color(hex: "#FF8B6A"))
-                .offset(x: 12, y: -10)
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(palette.accessory.opacity(0.9))
+                .frame(width: 9, height: 9)
+                .overlay {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 5, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.88))
+                }
+                .offset(x: 12, y: -8)
+                .rotationEffect(.degrees(isAccessoryGlowing ? 18 : 2))
         case .notchGuardian:
-            Image(systemName: "shield.lefthalf.filled")
-                .font(.system(size: 8, weight: .bold))
-                .foregroundStyle(Color(hex: "#A4A7FF"))
-                .offset(x: 12, y: -10)
+            GuardianCrest()
+                .fill(palette.accessory)
+                .frame(width: 12, height: 10)
+                .offset(y: -12)
+                .scaleEffect(isAccessoryGlowing ? 1.1 : 0.96)
         case .cursorEgg:
             EmptyView()
         }
+    }
+}
+
+struct TailShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX + 3, y: rect.maxY - 2))
+        path.addCurve(
+            to: CGPoint(x: rect.midX + 1, y: rect.midY + 1),
+            control1: CGPoint(x: rect.minX + 1, y: rect.midY + 5),
+            control2: CGPoint(x: rect.midX - 5, y: rect.midY + 5)
+        )
+        path.addCurve(
+            to: CGPoint(x: rect.maxX - 3, y: rect.minY + 3),
+            control1: CGPoint(x: rect.midX + 6, y: rect.midY - 8),
+            control2: CGPoint(x: rect.maxX - 1, y: rect.midY - 3)
+        )
+        return path
+    }
+}
+
+struct CatEye: View {
+    let tint: Color
+    let lookOffset: CGSize
+    let isBlinking: Bool
+    let isWide: Bool
+
+    var body: some View {
+        Capsule(style: .continuous)
+            .fill(tint.opacity(0.94))
+            .frame(
+                width: isWide ? 9.8 : 8.8,
+                height: isBlinking ? 1.2 : (isWide ? 4.6 : 3.9)
+            )
+            .offset(
+                x: isBlinking ? 0 : lookOffset.width * 0.52,
+                y: isBlinking ? 0 : lookOffset.height * 0.34
+            )
+    }
+}
+
+struct EggCrackShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.minX + rect.width * 0.22, y: rect.minY + 1))
+        path.addLine(to: CGPoint(x: rect.minX + rect.width * 0.42, y: rect.maxY - 1))
+        path.addLine(to: CGPoint(x: rect.minX + rect.width * 0.64, y: rect.minY + 2))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY + 1))
+        return path
+    }
+}
+
+struct AngularCatHead: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX + 4, y: rect.maxY - 2))
+        path.addLine(to: CGPoint(x: rect.minX + 2, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.minX + 7, y: rect.minY + 6))
+        path.addLine(to: CGPoint(x: rect.midX - 4, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.midX, y: rect.minY + 4))
+        path.addLine(to: CGPoint(x: rect.midX + 4, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - 7, y: rect.minY + 6))
+        path.addLine(to: CGPoint(x: rect.maxX - 2, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.maxX - 4, y: rect.maxY - 2))
+        path.closeSubpath()
+        return path
+    }
+}
+
+struct GuardianCrest: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - 2, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX + 2, y: rect.midY))
+        path.closeSubpath()
+        return path
+    }
+}
+
+struct PetSpeechBubble: View {
+    let text: String
+    let isEasterEgg: Bool
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: isEasterEgg ? 10 : 9, weight: .bold, design: .rounded))
+            .foregroundStyle(.white)
+            .padding(.horizontal, isEasterEgg ? 10 : 8)
+            .padding(.vertical, isEasterEgg ? 6 : 5)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(.black.opacity(isEasterEgg ? 0.72 : 0.56))
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(.white.opacity(isEasterEgg ? 0.38 : 0.18), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.16), radius: 6, y: 3)
+    }
+}
+
+struct PetAvatarFramePreferenceKey: PreferenceKey {
+    static let defaultValue: CGRect = .zero
+
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        value = nextValue()
+    }
+}
+
+struct PetDeveloperPreviewMenu: ViewModifier {
+    let progress: PetProgress
+    @Binding var petPreviewProgress: PetProgress?
+    @Binding var petPreviewMilestones: [PetMilestoneAnimation]
+    @Binding var petPreviewSequence: Int
+    @Binding var petDialogueTick: Int
+
+    func body(content: Content) -> some View {
+        content.contextMenu {
+            Text("预览宠物形态")
+            ForEach(PetPreviewFactory.previewLevels, id: \.self) { level in
+                Button("预览 Lv.\(level)") {
+                    let next = PetPreviewFactory.progress(for: level, todayXP: progress.todayXP)
+                    let previous = petPreviewProgress ?? progress
+                    petPreviewProgress = next
+                    petPreviewMilestones = PetPreviewFactory.previewMilestones(from: previous, to: next)
+                    petPreviewSequence += 1
+                    petDialogueTick += 1
+                }
+            }
+            Button("恢复真实进度") {
+                petPreviewProgress = nil
+                petPreviewMilestones = []
+                petPreviewSequence += 1
+                petDialogueTick += 1
+            }
+        }
+    }
+}
+
+struct BurstAuraShape: Shape {
+    let points: Int
+    let innerRatio: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let safePoints = max(4, points)
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let outerRadius = min(rect.width, rect.height) / 2
+        let innerRadius = outerRadius * innerRatio
+        let angleStep = .pi / CGFloat(safePoints)
+        var path = Path()
+
+        for index in 0..<(safePoints * 2) {
+            let angle = (CGFloat(index) * angleStep) - (.pi / 2)
+            let radius = index.isMultiple(of: 2) ? outerRadius : innerRadius
+            let point = CGPoint(
+                x: center.x + cos(angle) * radius,
+                y: center.y + sin(angle) * radius
+            )
+            if index == 0 {
+                path.move(to: point)
+            } else {
+                path.addLine(to: point)
+            }
+        }
+        path.closeSubpath()
+        return path
+    }
+}
+
+struct MilestoneTextBanner: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 10, weight: .bold, design: .rounded))
+            .foregroundStyle(.white.opacity(0.92))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(.black.opacity(0.45))
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(.white.opacity(0.16), lineWidth: 1)
+            )
+    }
+}
+
+struct RisingMilestoneText: View {
+    let text: String
+    @State private var isVisible = false
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 13, weight: .black, design: .rounded))
+            .tracking(1.2)
+            .foregroundStyle(
+                LinearGradient(
+                    colors: [Color(hex: "#FFF4A8"), .white],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .shadow(color: Color(hex: "#FFD84D").opacity(0.5), radius: 10, y: 2)
+            .offset(y: isVisible ? -18 : 2)
+            .opacity(isVisible ? 0 : 1)
+            .onAppear {
+                withAnimation(.easeOut(duration: 0.9)) {
+                    isVisible = true
+                }
+            }
+    }
+}
+
+private extension Comparable {
+    func clamped(to limits: ClosedRange<Self>) -> Self {
+        min(max(self, limits.lowerBound), limits.upperBound)
     }
 }
 

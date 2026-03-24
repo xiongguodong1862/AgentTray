@@ -292,15 +292,15 @@ public enum PetStage: String, Codable, Equatable, CaseIterable, Sendable {
     public var displayName: String {
         switch self {
         case .cursorEgg:
-            "光标蛋"
+            "喵喵蛋"
         case .pixelKitten:
-            "像素幼猫"
+            "像素喵"
         case .terminalCat:
-            "终端猫"
+            "终端喵"
         case .mechPatchCat:
-            "机甲补丁猫"
+            "补丁喵"
         case .notchGuardian:
-            "刘海守护猫"
+            "守护喵"
         }
     }
 
