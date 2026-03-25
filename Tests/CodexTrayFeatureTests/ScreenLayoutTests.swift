@@ -29,9 +29,9 @@ final class ScreenLayoutTests: XCTestCase {
         let weekSize = ScreenLayout.panelSize(for: .week)
         let monthSize = ScreenLayout.panelSize(for: .month)
 
-        XCTAssertEqual(yearSize.height, 560)
-        XCTAssertEqual(weekSize.height, 556)
-        XCTAssertEqual(monthSize.height, 724)
+        XCTAssertEqual(yearSize.height, 576)
+        XCTAssertEqual(weekSize.height, 572)
+        XCTAssertEqual(monthSize.height, 740)
         XCTAssertEqual(yearSize.width, weekSize.width)
         XCTAssertEqual(weekSize.width, monthSize.width)
         XCTAssertNotEqual(yearSize.height, weekSize.height)
