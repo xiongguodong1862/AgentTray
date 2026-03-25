@@ -132,24 +132,30 @@ public struct AgentStatusSummary: Codable, Equatable, Sendable {
     public let primaryLabel: String
     public let primaryValue: String
     public let primaryProgress: Double?
+    public let primaryResetAt: Date?
     public let secondaryLabel: String?
     public let secondaryValue: String?
     public let secondaryProgress: Double?
+    public let secondaryResetAt: Date?
 
     public init(
         primaryLabel: String,
         primaryValue: String,
         primaryProgress: Double? = nil,
+        primaryResetAt: Date? = nil,
         secondaryLabel: String? = nil,
         secondaryValue: String? = nil,
-        secondaryProgress: Double? = nil
+        secondaryProgress: Double? = nil,
+        secondaryResetAt: Date? = nil
     ) {
         self.primaryLabel = primaryLabel
         self.primaryValue = primaryValue
         self.primaryProgress = primaryProgress
+        self.primaryResetAt = primaryResetAt
         self.secondaryLabel = secondaryLabel
         self.secondaryValue = secondaryValue
         self.secondaryProgress = secondaryProgress
+        self.secondaryResetAt = secondaryResetAt
     }
 }
 

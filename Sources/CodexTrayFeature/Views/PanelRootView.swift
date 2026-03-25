@@ -328,7 +328,7 @@ struct PanelRootView: View {
                     label: row.label,
                     value: row.value,
                     remainingPercent: row.remainingPercent,
-                    resetHint: nil,
+                    resetHint: row.resetHint,
                     showsProgressBar: row.showsProgressBar
                 )
             }
@@ -419,27 +419,25 @@ struct PanelRootView: View {
         resetHint: String?,
         showsProgressBar: Bool
     ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: resetHint == nil ? 8 : 4) {
             HStack(alignment: .firstTextBaseline) {
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(label)
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.46))
-
-                    if let resetHint {
-                        Text(resetHint)
-                            .font(.system(size: 9, weight: .medium, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.34))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                    }
-                }
+                Text(label)
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.46))
 
                 Spacer()
 
                 Text(value)
                     .font(.system(size: 19, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
+            }
+
+            if let resetHint {
+                Text(resetHint)
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.36))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.92)
             }
 
             if showsProgressBar {
@@ -449,6 +447,7 @@ struct PanelRootView: View {
                 )
                 .tint(Color(hex: UsageLimitProgressStyle.tintHex(for: remainingPercent)))
                 .scaleEffect(x: 1, y: 0.72, anchor: .center)
+                .padding(.top, resetHint == nil ? 0 : 1)
             }
         }
     }
@@ -496,6 +495,10 @@ struct PanelRootView: View {
                     label: snapshot.status.primaryLabel,
                     value: snapshot.status.primaryValue,
                     remainingPercent: snapshot.status.primaryProgress.map { $0 * 100 },
+                    resetHint: UsageDisplayFormatter.resetDetail(
+                        for: snapshot.status.primaryResetAt,
+                        relativeTo: snapshot.generatedAt
+                    ),
                     showsProgressBar: true
                 )
             ]
@@ -506,6 +509,10 @@ struct PanelRootView: View {
                         label: secondaryLabel,
                         value: secondaryValue,
                         remainingPercent: snapshot.status.secondaryProgress.map { $0 * 100 },
+                        resetHint: UsageDisplayFormatter.resetDetail(
+                            for: snapshot.status.secondaryResetAt,
+                            relativeTo: snapshot.generatedAt
+                        ),
                         showsProgressBar: true
                     )
                 )
@@ -517,6 +524,7 @@ struct PanelRootView: View {
                     label: "近7天平均会话 Token",
                     value: AgentPanelLayoutPolicy.recentAverageTokensPerSessionText(for: snapshot),
                     remainingPercent: nil,
+                    resetHint: nil,
                     showsProgressBar: false
                 )
             ]
@@ -527,6 +535,7 @@ struct PanelRootView: View {
                         label: secondaryLabel,
                         value: secondaryValue,
                         remainingPercent: nil,
+                        resetHint: nil,
                         showsProgressBar: false
                     )
                 )
@@ -538,6 +547,7 @@ struct PanelRootView: View {
                     label: snapshot.status.primaryLabel,
                     value: snapshot.status.primaryValue,
                     remainingPercent: nil,
+                    resetHint: nil,
                     showsProgressBar: false
                 )
             ]
@@ -818,6 +828,7 @@ struct StatusRow: Identifiable {
     let label: String
     let value: String
     let remainingPercent: Double?
+    let resetHint: String?
     let showsProgressBar: Bool
 }
 
@@ -927,6 +938,16 @@ enum UsageDisplayFormatter {
         formatter.timeZone = timeZone
         formatter.dateFormat = "M/d HH:mm"
         return "\(formatter.string(from: date)) 重置"
+    }
+
+    static func resetDetail(
+        for date: Date?,
+        relativeTo now: Date,
+        timeZone: TimeZone = .current
+    ) -> String? {
+        guard let date, let reset = resetHint(for: date, timeZone: timeZone) else { return nil }
+        let remainingMinutes = max(0, Int(date.timeIntervalSince(now) / 60))
+        return "\(reset) | 剩余 \(DurationFormatter.string(for: remainingMinutes))"
     }
 }
 

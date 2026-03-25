@@ -35,9 +35,11 @@ public struct MultiAgentSnapshotBuilder: Sendable {
                 primaryLabel: "5小时余量",
                 primaryValue: codexSnapshot.primaryLimit?.shortLabel ?? "--",
                 primaryProgress: codexSnapshot.primaryLimit.map { $0.remainingPercent / 100 },
+                primaryResetAt: codexSnapshot.primaryLimit?.resetsAt,
                 secondaryLabel: "本周余量",
                 secondaryValue: codexSnapshot.secondaryLimit?.shortLabel ?? "--",
-                secondaryProgress: codexSnapshot.secondaryLimit.map { $0.remainingPercent / 100 }
+                secondaryProgress: codexSnapshot.secondaryLimit.map { $0.remainingPercent / 100 },
+                secondaryResetAt: codexSnapshot.secondaryLimit?.resetsAt
             ),
             today: codexSnapshot.today,
             lastSevenDays: codexSnapshot.lastSevenDays.map { withSourceAgent($0, agent: .codex) },
@@ -72,9 +74,11 @@ public struct MultiAgentSnapshotBuilder: Sendable {
                 primaryLabel: "5小时余量",
                 primaryValue: codexSnapshot.primaryLimit?.shortLabel ?? "--",
                 primaryProgress: codexSnapshot.primaryLimit.map { $0.remainingPercent / 100 },
+                primaryResetAt: codexSnapshot.primaryLimit?.resetsAt,
                 secondaryLabel: "本周余量",
                 secondaryValue: codexSnapshot.secondaryLimit?.shortLabel ?? "--",
-                secondaryProgress: codexSnapshot.secondaryLimit.map { $0.remainingPercent / 100 }
+                secondaryProgress: codexSnapshot.secondaryLimit.map { $0.remainingPercent / 100 },
+                secondaryResetAt: codexSnapshot.secondaryLimit?.resetsAt
             ),
             today: codexSnapshot.today,
             lastSevenDays: codexSnapshot.lastSevenDays.map { withSourceAgent($0, agent: .codex) },

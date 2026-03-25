@@ -450,7 +450,7 @@ final class FloatingPanel: NSPanel {
 
 enum ScreenLayout {
     private static let panelHorizontalPadding: CGFloat = 12
-    private static let codexBaseExpandedPanelHeight: CGFloat = 560
+    private static let codexBaseExpandedPanelHeight: CGFloat = 576
     private static let claudeBaseExpandedPanelHeight: CGFloat = 592
     private static let geminiBaseExpandedPanelHeight: CGFloat = 576
     private static let allBaseExpandedPanelHeight: CGFloat = 560

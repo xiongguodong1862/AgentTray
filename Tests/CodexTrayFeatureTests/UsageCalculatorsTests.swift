@@ -419,6 +419,18 @@ final class UsageCalculatorsTests: XCTestCase {
         XCTAssertNil(UsageDisplayFormatter.resetHint(for: nil))
     }
 
+    func testUsageDisplayFormatterFormatsResetDetailWithRemainingDuration() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let resetAt = now.addingTimeInterval((4 * 60 * 60) + (54 * 60))
+        let timeZone = TimeZone(secondsFromGMT: 8 * 60 * 60) ?? .current
+
+        XCTAssertEqual(
+            UsageDisplayFormatter.resetDetail(for: resetAt, relativeTo: now, timeZone: timeZone),
+            "11/15 11:07 重置 | 剩余 4小时54分"
+        )
+        XCTAssertNil(UsageDisplayFormatter.resetDetail(for: nil, relativeTo: now, timeZone: timeZone))
+    }
+
     func testHeatmapLabelFormatterShowsMonthOnlyOnFirstWeekColumn() {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 8 * 60 * 60) ?? .current
