@@ -2,6 +2,8 @@ import Combine
 import SwiftUI
 
 struct PanelRootView: View {
+    static let loadingStatusText = "数据整理中"
+
     @ObservedObject var store: UsageStore
     @ObservedObject var settingsStore: AppSettingsStore
     let onQuit: () -> Void
@@ -175,9 +177,15 @@ struct PanelRootView: View {
             }
 
             if store.isLoading {
-                Text("数据整理中...")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.68))
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(.white.opacity(0.68))
+
+                    Text(Self.loadingStatusText)
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.68))
+                }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 7)
                     .background(
