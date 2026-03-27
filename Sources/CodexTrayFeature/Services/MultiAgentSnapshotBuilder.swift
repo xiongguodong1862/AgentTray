@@ -334,18 +334,25 @@ struct ClaudeUsageSnapshotBuilder: Sendable {
             return AgentSnapshot.empty(agent: .claude, generatedAt: now, runtimeLabel: "Claude Code", dataSourceLabel: "~/.claude/projects")
         }
 
+        let earliestDate = calendar.date(byAdding: .day, value: -364, to: calendar.startOfDay(for: now)) ?? calendar.startOfDay(for: now)
         var accumulators: [Date: ClaudeSessionDayAccumulator] = [:]
         var currentModel: String?
         var lastActiveAt: Date?
 
         let enumerator = FileManager.default.enumerator(
             at: projectsRoot,
-            includingPropertiesForKeys: [.isRegularFileKey],
+            includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey],
             options: [.skipsHiddenFiles]
         )
 
         while let fileURL = enumerator?.nextObject() as? URL {
             guard fileURL.pathExtension == "jsonl" else { continue }
+            let resourceValues = try? fileURL.resourceValues(forKeys: [.contentModificationDateKey, .isRegularFileKey])
+            guard resourceValues?.isRegularFile == true else { continue }
+            if let modifiedAt = resourceValues?.contentModificationDate,
+               modifiedAt < earliestDate {
+                continue
+            }
             guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
 
             for rawLine in content.split(separator: "\n", omittingEmptySubsequences: false) {
@@ -357,6 +364,7 @@ struct ClaudeUsageSnapshotBuilder: Sendable {
                 else {
                     continue
                 }
+                guard timestamp >= earliestDate else { continue }
 
                 let day = calendar.startOfDay(for: timestamp)
                 var accumulator = accumulators[day] ?? ClaudeSessionDayAccumulator()
@@ -471,45 +479,55 @@ struct GeminiUsageSnapshotBuilder: Sendable {
             return AgentSnapshot.empty(agent: .gemini, generatedAt: now, runtimeLabel: "Gemini CLI", dataSourceLabel: dataSourceLabel)
         }
 
+        let earliestDate = calendar.date(byAdding: .day, value: -364, to: calendar.startOfDay(for: now)) ?? calendar.startOfDay(for: now)
         var accumulators: [Date: GeminiSessionDayAccumulator] = [:]
         var currentModel: String?
         var lastActiveAt: Date?
 
         let enumerator = FileManager.default.enumerator(
             at: logsRoot,
-            includingPropertiesForKeys: [.isRegularFileKey],
+            includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey],
             options: [.skipsHiddenFiles]
         )
 
+        var chatFiles: [URL] = []
+        var fallbackLogFiles: [URL] = []
+
         while let fileURL = enumerator?.nextObject() as? URL {
-            if fileURL.pathComponents.contains("chats"), fileURL.pathExtension == "json" {
-                guard let content = try? Data(contentsOf: fileURL) else { continue }
-                guard let chat = try? JSONSerialization.jsonObject(with: content) as? [String: Any] else { continue }
-                ingestChatSession(
-                    chat,
-                    into: &accumulators,
-                    currentModel: &currentModel,
-                    lastActiveAt: &lastActiveAt
-                )
+            let resourceValues = try? fileURL.resourceValues(forKeys: [.contentModificationDateKey, .isRegularFileKey])
+            guard resourceValues?.isRegularFile == true else { continue }
+            if let modifiedAt = resourceValues?.contentModificationDate,
+               modifiedAt < earliestDate {
                 continue
+            }
+            if fileURL.pathComponents.contains("chats"), fileURL.pathExtension == "json" {
+                chatFiles.append(fileURL)
+            } else if fileURL.lastPathComponent == "logs.json" {
+                fallbackLogFiles.append(fileURL)
             }
         }
 
-        if accumulators.isEmpty {
-            let fallbackEnumerator = FileManager.default.enumerator(
-                at: logsRoot,
-                includingPropertiesForKeys: [.isRegularFileKey],
-                options: [.skipsHiddenFiles]
+        for fileURL in chatFiles {
+            guard let content = try? Data(contentsOf: fileURL) else { continue }
+            guard let chat = try? JSONSerialization.jsonObject(with: content) as? [String: Any] else { continue }
+            ingestChatSession(
+                chat,
+                since: earliestDate,
+                into: &accumulators,
+                currentModel: &currentModel,
+                lastActiveAt: &lastActiveAt
             )
+        }
 
-            while let fileURL = fallbackEnumerator?.nextObject() as? URL {
-                guard fileURL.lastPathComponent == "logs.json" else { continue }
+        if accumulators.isEmpty {
+            for fileURL in fallbackLogFiles {
                 guard let content = try? Data(contentsOf: fileURL) else { continue }
                 guard let items = try? JSONSerialization.jsonObject(with: content) as? [[String: Any]] else { continue }
 
                 for item in items {
                     ingestLogItem(
                         item,
+                        since: earliestDate,
                         into: &accumulators,
                         currentModel: &currentModel,
                         lastActiveAt: &lastActiveAt
@@ -551,6 +569,7 @@ struct GeminiUsageSnapshotBuilder: Sendable {
 
     private func ingestChatSession(
         _ chat: [String: Any],
+        since earliestDate: Date,
         into accumulators: inout [Date: GeminiSessionDayAccumulator],
         currentModel: inout String?,
         lastActiveAt: inout Date?
@@ -565,6 +584,7 @@ struct GeminiUsageSnapshotBuilder: Sendable {
             else {
                 continue
             }
+            guard timestamp >= earliestDate else { continue }
 
             let day = calendar.startOfDay(for: timestamp)
             var accumulator = accumulators[day] ?? GeminiSessionDayAccumulator()
@@ -585,6 +605,7 @@ struct GeminiUsageSnapshotBuilder: Sendable {
 
     private func ingestLogItem(
         _ item: [String: Any],
+        since earliestDate: Date,
         into accumulators: inout [Date: GeminiSessionDayAccumulator],
         currentModel: inout String?,
         lastActiveAt: inout Date?
@@ -595,6 +616,7 @@ struct GeminiUsageSnapshotBuilder: Sendable {
         else {
             return
         }
+        guard timestamp >= earliestDate else { return }
 
         let day = calendar.startOfDay(for: timestamp)
         var accumulator = accumulators[day] ?? GeminiSessionDayAccumulator()

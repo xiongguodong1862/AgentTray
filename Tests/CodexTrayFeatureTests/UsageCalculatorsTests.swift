@@ -368,6 +368,32 @@ final class UsageCalculatorsTests: XCTestCase {
         )
     }
 
+    func testUsageDisplayFormatterFormatsHeatmapTooltipTextWithCompactTokenValue() {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.timeZone = TimeZone(secondsFromGMT: 8 * 60 * 60)
+        formatter.dateFormat = "yyyy年M月d日"
+        let day = UsageMetricsDay(
+            date: Date(timeIntervalSince1970: 1_711_244_800),
+            dialogs: 3,
+            activeMinutes: 42,
+            modifiedFiles: 6,
+            addedLines: 150,
+            deletedLines: 22,
+            tokenUsage: 3_200
+        )
+
+        XCTAssertEqual(
+            UsageDisplayFormatter.heatmapTooltipText(for: day, dateFormatter: formatter),
+            """
+            2024年3月24日
+            3 次对话
+            活跃 42分
+            Token 3.2K
+            """
+        )
+    }
+
     func testUsageDisplayFormatterFormatsResetHint() {
         let date = Date(timeIntervalSince1970: 1_700_000_000)
         let timeZone = TimeZone(secondsFromGMT: 8 * 60 * 60) ?? .current

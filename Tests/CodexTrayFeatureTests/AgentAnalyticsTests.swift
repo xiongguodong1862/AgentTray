@@ -209,6 +209,74 @@ final class AgentAnalyticsTests: XCTestCase {
         XCTAssertEqual(analytics.projectStatsToday?.highestTokenProjectValue, 150)
     }
 
+    func testClaudeAnalyticsBuilderIgnoresEntriesOlderThanLast30Days() throws {
+        let tempRoot = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let claudeRoot = tempRoot.appending(path: ".claude/projects/sample", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: claudeRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let sessionLog = """
+        {"sessionId":"old-session","type":"assistant","timestamp":"2026-02-20T01:02:00.000Z","message":{"model":"claude-sonnet-4-5","usage":{"input_tokens":900,"output_tokens":100},"content":[]}}
+        {"sessionId":"recent-session","type":"assistant","timestamp":"2026-03-24T05:03:00.000Z","message":{"model":"claude-sonnet-4-5","usage":{"input_tokens":800,"output_tokens":200},"content":[]}}
+        """
+        try sessionLog.write(
+            to: claudeRoot.appending(path: "session.jsonl"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .current
+        let builder = AgentAnalyticsBuilder(
+            codexSessionsRoot: tempRoot.appending(path: "sessions"),
+            codexStateDatabaseURL: tempRoot.appending(path: "state.sqlite"),
+            claudeProjectsRoot: tempRoot.appending(path: ".claude/projects"),
+            geminiLogsRoot: tempRoot.appending(path: ".gemini/tmp"),
+            calendar: calendar
+        )
+
+        let analytics = builder.buildClaude(now: try XCTUnwrap(ISO8601DateParser.parse("2026-03-24T12:00:00.000Z")))
+
+        XCTAssertEqual(analytics.tokenStatsMonth.totalTokens, 1_000)
+        XCTAssertEqual(analytics.sessionStatsMonth.totalSessions, 1)
+    }
+
+    func testGeminiAnalyticsBuilderIgnoresEntriesOlderThanLast30Days() throws {
+        let tempRoot = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let chatsRoot = tempRoot.appending(path: ".gemini/tmp/demo/chats", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: chatsRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let chat = """
+        {
+          "sessionId": "session-1",
+          "messages": [
+            { "id": "a0", "timestamp": "2026-02-20T02:01:00.000Z", "type": "gemini", "model": "gemini-2.5-pro", "tokens": { "input": 90, "output": 10, "total": 100 } },
+            { "id": "a1", "timestamp": "2026-03-24T02:01:00.000Z", "type": "gemini", "model": "gemini-2.5-pro", "tokens": { "input": 80, "output": 20, "total": 100 } },
+            { "id": "a2", "timestamp": "2026-03-24T04:01:00.000Z", "type": "gemini", "model": "gemini-2.5-pro", "tokens": { "input": 40, "output": 10, "total": 50 } }
+          ]
+        }
+        """
+        try chat.write(to: chatsRoot.appending(path: "session-1.json"), atomically: true, encoding: .utf8)
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .current
+        let builder = AgentAnalyticsBuilder(
+            codexSessionsRoot: tempRoot.appending(path: "sessions"),
+            codexStateDatabaseURL: tempRoot.appending(path: "state.sqlite"),
+            claudeProjectsRoot: tempRoot.appending(path: ".claude/projects"),
+            geminiLogsRoot: tempRoot.appending(path: ".gemini/tmp"),
+            calendar: calendar
+        )
+
+        let analytics = builder.buildGemini(now: try XCTUnwrap(ISO8601DateParser.parse("2026-03-24T12:00:00.000Z")))
+
+        XCTAssertEqual(analytics.tokenStatsMonth.totalTokens, 150)
+        XCTAssertEqual(analytics.projectStatsMonth?.highestTokenProjectValue, 150)
+    }
+
     func testCodexTokenUsageFallsBackToInfoLastTokenUsage() throws {
         let tempRoot = URL(fileURLWithPath: NSTemporaryDirectory())
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)

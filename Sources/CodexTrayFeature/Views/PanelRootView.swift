@@ -173,6 +173,23 @@ struct PanelRootView: View {
                 }
                 .buttonStyle(.plain)
             }
+
+            if store.isLoading {
+                Text("数据整理中...")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.68))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(
+                        Capsule()
+                            .fill(.white.opacity(0.06))
+                    )
+                    .overlay(
+                        Capsule()
+                            .stroke(.white.opacity(0.06), lineWidth: 1)
+                    )
+                    .transition(.opacity)
+            }
         }
     }
 
@@ -326,9 +343,9 @@ struct PanelRootView: View {
     private var allSummaryBlock: some View {
         VStack(alignment: .leading, spacing: 18) {
             summaryMetricRow(label: "最近活跃", value: recentAgentLabel, valueColor: .white)
-            summaryMetricRow(label: "总活跃时长", value: DurationFormatter.string(for: store.multiAgentSnapshot.todaySummary.totalActiveMinutes), valueColor: .white)
-            summaryMetricRow(label: "总会话数", value: "\(store.multiAgentSnapshot.todaySummary.totalSessions)", valueColor: .white)
-            summaryMetricRow(label: "总 Token", value: UsageNumberFormatter.compactCount(store.multiAgentSnapshot.todaySummary.totalTokenUsage), valueColor: .white)
+            summaryMetricRow(label: "今日活跃时长", value: DurationFormatter.string(for: store.multiAgentSnapshot.todaySummary.totalActiveMinutes), valueColor: .white)
+            summaryMetricRow(label: "今日会话数", value: "\(store.multiAgentSnapshot.todaySummary.totalSessions)", valueColor: .white)
+            summaryMetricRow(label: "今日 Token", value: UsageNumberFormatter.compactCount(store.multiAgentSnapshot.todaySummary.totalTokenUsage), valueColor: .white)
         }
     }
 
@@ -916,7 +933,7 @@ enum UsageDisplayFormatter {
             "活跃 \(durationFormatter(day.activeMinutes))",
         ]
         if day.tokenUsage > 0 {
-            lines.append("Token \(day.tokenUsage)")
+            lines.append("Token \(UsageNumberFormatter.compactCount(day.tokenUsage))")
         }
         if day.toolCalls > 0 {
             lines.append("工具 \(day.toolCalls)")
@@ -1713,6 +1730,7 @@ enum PetDialogueLibrary {
 struct YearContributionHeatmap: View {
     let days: [UsageMetricsDay]
     let colorPreset: HeatmapColorPreset
+    let tooltipTextProvider: ((UsageMetricsDay) -> String)?
     @State private var hoveredCell: HoveredHeatmapCell?
     private let calendar: Calendar
     private let lookup: [Date: UsageMetricsDay]
@@ -1726,9 +1744,10 @@ struct YearContributionHeatmap: View {
         return formatter
     }()
 
-    init(days: [UsageMetricsDay], colorPreset: HeatmapColorPreset) {
+    init(days: [UsageMetricsDay], colorPreset: HeatmapColorPreset, tooltipTextProvider: ((UsageMetricsDay) -> String)? = nil) {
         self.days = days
         self.colorPreset = colorPreset
+        self.tooltipTextProvider = tooltipTextProvider
         var calendar = Calendar(identifier: .gregorian)
         calendar.firstWeekday = 2
         self.calendar = calendar
@@ -1843,13 +1862,15 @@ struct YearContributionHeatmap: View {
     }
 
     private func tooltipText(for day: UsageMetricsDay) -> String {
-        UsageDisplayFormatter.heatmapTooltipText(for: day, dateFormatter: Self.tooltipDateFormatter)
+        tooltipTextProvider?(day)
+            ?? UsageDisplayFormatter.heatmapTooltipText(for: day, dateFormatter: Self.tooltipDateFormatter)
     }
 }
 
 struct MonthCalendarHeatmap: View {
     let days: [UsageMetricsDay]
     let colorPreset: HeatmapColorPreset
+    let tooltipTextProvider: ((UsageMetricsDay) -> String)?
     @State private var hoveredCell: HoveredHeatmapCell?
 
     private static let tooltipDateFormatter: DateFormatter = {
@@ -1894,6 +1915,12 @@ struct MonthCalendarHeatmap: View {
 
     private var lookup: [Date: UsageMetricsDay] {
         Dictionary(uniqueKeysWithValues: days.map { (calendar.startOfDay(for: $0.date), $0) })
+    }
+
+    init(days: [UsageMetricsDay], colorPreset: HeatmapColorPreset, tooltipTextProvider: ((UsageMetricsDay) -> String)? = nil) {
+        self.days = days
+        self.colorPreset = colorPreset
+        self.tooltipTextProvider = tooltipTextProvider
     }
 
     var body: some View {
@@ -1972,13 +1999,15 @@ struct MonthCalendarHeatmap: View {
     }
 
     private func tooltipText(for day: UsageMetricsDay) -> String {
-        UsageDisplayFormatter.heatmapTooltipText(for: day, dateFormatter: Self.tooltipDateFormatter)
+        tooltipTextProvider?(day)
+            ?? UsageDisplayFormatter.heatmapTooltipText(for: day, dateFormatter: Self.tooltipDateFormatter)
     }
 }
 
 struct WeekStripHeatmap: View {
     let days: [UsageMetricsDay]
     let colorPreset: HeatmapColorPreset
+    let tooltipTextProvider: ((UsageMetricsDay) -> String)?
     @State private var hoveredCell: HoveredHeatmapCell?
     private let calendar: Calendar
     private let sortedDays: [UsageMetricsDay]
@@ -1990,9 +2019,10 @@ struct WeekStripHeatmap: View {
         return formatter
     }()
 
-    init(days: [UsageMetricsDay], colorPreset: HeatmapColorPreset) {
+    init(days: [UsageMetricsDay], colorPreset: HeatmapColorPreset, tooltipTextProvider: ((UsageMetricsDay) -> String)? = nil) {
         self.days = days
         self.colorPreset = colorPreset
+        self.tooltipTextProvider = tooltipTextProvider
         var calendar = Calendar(identifier: .gregorian)
         calendar.firstWeekday = 2
         self.calendar = calendar
@@ -2058,7 +2088,8 @@ struct WeekStripHeatmap: View {
     }
 
     private func tooltipText(for day: UsageMetricsDay) -> String {
-        UsageDisplayFormatter.heatmapTooltipText(for: day, dateFormatter: Self.tooltipDateFormatter)
+        tooltipTextProvider?(day)
+            ?? UsageDisplayFormatter.heatmapTooltipText(for: day, dateFormatter: Self.tooltipDateFormatter)
     }
 }
 

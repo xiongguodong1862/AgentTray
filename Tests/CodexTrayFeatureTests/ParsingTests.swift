@@ -434,4 +434,34 @@ final class ParsingTests: XCTestCase {
         )
         XCTAssertEqual(secondaryLimit.usedPercent, 10, accuracy: 0.0001)
     }
+
+    func testSnapshotBuilderIncludesCodexTokenCountInDailyUsage() throws {
+        let tempDirectory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let sessionsRoot = tempDirectory.appending(path: "sessions/2026/03/23", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: sessionsRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDirectory) }
+
+        let session = """
+        {"timestamp":"2026-03-23T16:00:00.000Z","type":"session_meta","payload":{"id":"thread-1","timestamp":"2026-03-23T16:00:00.000Z"}}
+        {"timestamp":"2026-03-23T16:01:00.000Z","type":"event_msg","payload":{"type":"user_message"}}
+        {"timestamp":"2026-03-23T16:02:00.000Z","type":"event_msg","payload":{"type":"token_count","last_token_usage":{"input_tokens":1200,"output_tokens":300,"reasoning_tokens":50,"total_tokens":1550}}}
+        """
+        try session.write(to: sessionsRoot.appending(path: "thread-1.jsonl"), atomically: true, encoding: .utf8)
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .current
+
+        let builder = CodexUsageSnapshotBuilder(
+            sessionsRoot: tempDirectory.appending(path: "sessions"),
+            stateDatabaseURL: tempDirectory.appending(path: "state_5.sqlite"),
+            calendar: calendar
+        )
+
+        let snapshot = try builder.buildSnapshot(now: ISO8601DateParser.parse("2026-03-23T18:00:00.000Z") ?? .now)
+
+        XCTAssertEqual(snapshot.today.dialogs, 1)
+        XCTAssertEqual(snapshot.today.tokenUsage, 1_550)
+        XCTAssertEqual(snapshot.lastYearDays.last?.tokenUsage, 1_550)
+    }
 }

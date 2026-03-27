@@ -4,6 +4,7 @@ import SQLite3
 struct SessionDayAccumulator {
     var dialogs = 0
     var activityTimestamps: [Date] = []
+    var tokenUsage = 0
 }
 
 struct PatchStats: Equatable {
@@ -69,8 +70,9 @@ public struct CodexUsageSnapshotBuilder: Sendable {
     }
 
     public func buildSnapshot(now: Date = .now) throws -> UsageSnapshot {
-        let sessionResult = try CodexSessionScanner(rootURL: sessionsRoot, calendar: calendar).scanAll()
-        let patchStatsByDay = try CodexSQLiteLogReader(databaseURL: stateDatabaseURL, calendar: calendar).readDailyPatchStats()
+        let earliestIncludedDate = calendar.date(byAdding: .day, value: -364, to: calendar.startOfDay(for: now)) ?? calendar.startOfDay(for: now)
+        let sessionResult = try CodexSessionScanner(rootURL: sessionsRoot, calendar: calendar).scanAll(since: earliestIncludedDate)
+        let patchStatsByDay = try CodexSQLiteLogReader(databaseURL: stateDatabaseURL, calendar: calendar).readDailyPatchStats(since: earliestIncludedDate)
         let mergedMetrics = mergeMetrics(sessionResult: sessionResult, patchStatsByDay: patchStatsByDay)
         let lastSevenDays = buildLastSevenDays(from: mergedMetrics, now: now)
         let lastYearDays = buildLastYearDays(from: mergedMetrics, now: now)
@@ -146,7 +148,8 @@ public struct CodexUsageSnapshotBuilder: Sendable {
                 activeMinutes: ActivityTimelineCalculator.activeMinutes(for: session?.activityTimestamps ?? []),
                 modifiedFiles: patch?.modifiedFiles.count ?? 0,
                 addedLines: patch?.addedLines ?? 0,
-                deletedLines: patch?.deletedLines ?? 0
+                deletedLines: patch?.deletedLines ?? 0,
+                tokenUsage: session?.tokenUsage ?? 0
             )
         }
 
@@ -174,7 +177,7 @@ struct CodexSessionScanner {
     let rootURL: URL
     let calendar: Calendar
 
-    func scanAll() throws -> SessionScanResult {
+    func scanAll(since earliestDate: Date? = nil) throws -> SessionScanResult {
         guard FileManager.default.fileExists(atPath: rootURL.path) else {
             return SessionScanResult()
         }
@@ -188,10 +191,33 @@ struct CodexSessionScanner {
 
         while let fileURL = enumerator?.nextObject() as? URL {
             guard fileURL.pathExtension == "jsonl" else { continue }
+            if let earliestDate,
+               let day = dayFromPath(fileURL),
+               day < calendar.startOfDay(for: earliestDate) {
+                continue
+            }
             try scanFile(fileURL, into: &result)
         }
 
         return result
+    }
+
+    private func dayFromPath(_ fileURL: URL) -> Date? {
+        let components = fileURL.pathComponents
+        guard let sessionsIndex = components.lastIndex(of: "sessions"),
+              components.count > sessionsIndex + 3,
+              let year = Int(components[sessionsIndex + 1]),
+              let month = Int(components[sessionsIndex + 2]),
+              let day = Int(components[sessionsIndex + 3])
+        else {
+            return nil
+        }
+
+        var dateComponents = DateComponents()
+        dateComponents.year = year
+        dateComponents.month = month
+        dateComponents.day = day
+        return calendar.date(from: dateComponents)
     }
 
     private func scanFile(_ fileURL: URL, into result: inout SessionScanResult) throws {
@@ -257,6 +283,10 @@ struct CodexSessionScanner {
             result.days[day, default: SessionDayAccumulator()].activityTimestamps.append(timestamp)
         case "token_count":
             result.hasSourceData = true
+            let tokenUsage = extractTokenUsage(from: payload)
+            if tokenUsage > 0 {
+                result.days[day, default: SessionDayAccumulator()].tokenUsage += tokenUsage
+            }
         default:
             break
         }
@@ -274,6 +304,43 @@ struct CodexSessionScanner {
         }
 
         return false
+    }
+
+    private func extractTokenUsage(from payload: [String: Any]) -> Int {
+        let usageCandidates = [
+            payload["last_token_usage"] as? [String: Any],
+            (payload["info"] as? [String: Any])?["last_token_usage"] as? [String: Any],
+            payload["token_usage"] as? [String: Any]
+        ]
+
+        for usage in usageCandidates {
+            guard let usage else { continue }
+            let inputTokens = intValue(in: usage, keys: ["input_tokens", "inputTokens"])
+            let outputTokens = intValue(in: usage, keys: ["output_tokens", "outputTokens"])
+            let reasoningTokens = intValue(in: usage, keys: ["reasoning_tokens", "reasoningTokens", "reasoning_output_tokens"])
+            let explicitTotal = intValue(in: usage, keys: ["total_tokens", "totalTokens"])
+            let total = max(explicitTotal, inputTokens + outputTokens + reasoningTokens)
+            if total > 0 {
+                return total
+            }
+        }
+
+        return 0
+    }
+
+    private func intValue(in dictionary: [String: Any], keys: [String]) -> Int {
+        for key in keys {
+            if let value = dictionary[key] as? Int {
+                return value
+            }
+            if let value = dictionary[key] as? Double {
+                return Int(value)
+            }
+            if let value = dictionary[key] as? String, let int = Int(value) {
+                return int
+            }
+        }
+        return 0
     }
 
     private func consumeResponseItem(
@@ -312,7 +379,7 @@ struct CodexSQLiteLogReader {
     let databaseURL: URL
     let calendar: Calendar
 
-    func readDailyPatchStats() throws -> [Date: PatchStats] {
+    func readDailyPatchStats(since earliestDate: Date? = nil) throws -> [Date: PatchStats] {
         guard FileManager.default.fileExists(atPath: databaseURL.path) else {
             return [:]
         }
@@ -327,17 +394,30 @@ struct CodexSQLiteLogReader {
         }
         defer { sqlite3_close(database) }
 
-        let query = """
-        SELECT ts, message
-        FROM logs
-        WHERE message LIKE '%ToolCall: apply_patch%'
-        """
+        let query: String
+        if earliestDate != nil {
+            query = """
+            SELECT ts, message
+            FROM logs
+            WHERE ts >= ? AND message LIKE '%ToolCall: apply_patch%'
+            """
+        } else {
+            query = """
+            SELECT ts, message
+            FROM logs
+            WHERE message LIKE '%ToolCall: apply_patch%'
+            """
+        }
 
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(database, query, -1, &statement, nil) == SQLITE_OK, let statement else {
             return [:]
         }
         defer { sqlite3_finalize(statement) }
+
+        if let earliestDate {
+            sqlite3_bind_double(statement, 1, earliestDate.timeIntervalSince1970)
+        }
 
         var statsByDay: [Date: PatchStats] = [:]
 

@@ -237,6 +237,98 @@ final class MultiAgentTests: XCTestCase {
         XCTAssertEqual(snapshot.status.secondaryValue, "2.5K")
     }
 
+    func testClaudeSnapshotBuilderIgnoresEntriesOlderThanLast365Days() throws {
+        let tempHome = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let projectRoot = tempHome
+            .appending(path: ".claude/projects/sample", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: projectRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempHome) }
+
+        let sessionLog = """
+        {"sessionId":"old-session","type":"assistant","timestamp":"2025-03-20T01:02:00.000Z","message":{"model":"claude-sonnet-4-5","usage":{"input_tokens":900,"output_tokens":100},"content":[]}}
+        {"sessionId":"recent-session","type":"assistant","timestamp":"2026-03-24T05:03:00.000Z","message":{"model":"claude-sonnet-4-5","usage":{"input_tokens":800,"output_tokens":200},"content":[]}}
+        """
+        let sessionFile = projectRoot.appending(path: "session.jsonl")
+        try sessionLog.write(to: sessionFile, atomically: true, encoding: .utf8)
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .current
+        let builder = ClaudeUsageSnapshotBuilder(homeDirectory: tempHome, calendar: calendar)
+
+        let snapshot = try builder.build(now: ISO8601DateParser.parse("2026-03-24T12:00:00.000Z") ?? .now)
+
+        XCTAssertEqual(snapshot.today.dialogs, 1)
+        XCTAssertEqual(snapshot.today.tokenUsage, 1_000)
+        XCTAssertEqual(snapshot.lastYearDays.last?.tokenUsage, 1_000)
+    }
+
+    func testGeminiSnapshotBuilderIgnoresEntriesOlderThanLast365Days() throws {
+        let tempHome = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let projectRoot = tempHome.appending(path: ".gemini/tmp/codextray", directoryHint: .isDirectory)
+        let chatsRoot = projectRoot.appending(path: "chats", directoryHint: .isDirectory)
+        let settingsURL = tempHome.appending(path: ".gemini/settings.json")
+        try FileManager.default.createDirectory(at: chatsRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempHome) }
+
+        let oldChat = """
+        {
+          "sessionId": "old-session",
+          "messages": [
+            { "id": "a1", "timestamp": "2025-03-20T10:29:21.179Z", "type": "gemini", "tokens": { "input": 600, "output": 50, "total": 650 }, "model": "gemini-3-flash-preview" }
+          ]
+        }
+        """
+        try oldChat.write(
+            to: chatsRoot.appending(path: "session-2025-03-20T10-29-old.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let recentChat = """
+        {
+          "sessionId": "recent-session",
+          "messages": [
+            { "id": "a1", "timestamp": "2026-03-24T10:29:21.179Z", "type": "gemini", "tokens": { "input": 700, "output": 100, "total": 800 }, "model": "gemini-3-flash-preview" }
+          ]
+        }
+        """
+        try recentChat.write(
+            to: chatsRoot.appending(path: "session-2026-03-24T10-29-recent.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        try FileManager.default.createDirectory(
+            at: settingsURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try """
+        {
+          "security": {
+            "auth": {
+              "selectedType": "oauth-personal"
+            }
+          }
+        }
+        """.write(to: settingsURL, atomically: true, encoding: .utf8)
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .current
+        let builder = GeminiUsageSnapshotBuilder(
+            logsRoot: tempHome.appending(path: ".gemini/tmp", directoryHint: .isDirectory),
+            settingsURL: settingsURL,
+            calendar: calendar
+        )
+
+        let snapshot = try builder.build(now: ISO8601DateParser.parse("2026-03-24T12:00:00.000Z") ?? .now)
+
+        XCTAssertEqual(snapshot.today.dialogs, 1)
+        XCTAssertEqual(snapshot.today.tokenUsage, 800)
+        XCTAssertEqual(snapshot.lastYearDays.last?.tokenUsage, 800)
+    }
+
     func testMultiAgentSnapshotBuilderCreatesAggregateSummary() {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let day = Calendar.current.startOfDay(for: now)
@@ -250,7 +342,8 @@ final class MultiAgentTests: XCTestCase {
                 activeMinutes: 45,
                 modifiedFiles: 2,
                 addedLines: 20,
-                deletedLines: 5
+                deletedLines: 5,
+                tokenUsage: 1_550
             ),
             lastSevenDays: (0..<7).map { offset in
                 UsageMetricsDay(
@@ -259,7 +352,8 @@ final class MultiAgentTests: XCTestCase {
                     activeMinutes: 10,
                     modifiedFiles: 1,
                     addedLines: 4,
-                    deletedLines: 1
+                    deletedLines: 1,
+                    tokenUsage: 200
                 )
             },
             lastYearDays: (0..<365).map { offset in
@@ -269,7 +363,8 @@ final class MultiAgentTests: XCTestCase {
                     activeMinutes: offset == 364 ? 45 : 0,
                     modifiedFiles: offset == 364 ? 2 : 0,
                     addedLines: offset == 364 ? 20 : 0,
-                    deletedLines: offset == 364 ? 5 : 0
+                    deletedLines: offset == 364 ? 5 : 0,
+                    tokenUsage: offset == 364 ? 1_550 : 0
                 )
             },
             pet: PetProgress(level: 0, stage: .cursorEgg, currentXP: 0, nextLevelXP: 180, todayXP: 0),
@@ -294,7 +389,9 @@ final class MultiAgentTests: XCTestCase {
         XCTAssertEqual(snapshot.agents.count, 3)
         XCTAssertEqual(snapshot.todaySummary.totalSessions, 3)
         XCTAssertEqual(snapshot.todaySummary.totalActiveMinutes, 45)
+        XCTAssertEqual(snapshot.todaySummary.totalTokenUsage, 1_550)
         XCTAssertEqual(snapshot.mostRecentlyActiveAgent, .codex)
         XCTAssertEqual(snapshot.focusedAgent, .codex)
     }
+
 }

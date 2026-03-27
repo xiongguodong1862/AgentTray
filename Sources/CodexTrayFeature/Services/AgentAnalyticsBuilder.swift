@@ -23,8 +23,9 @@ struct AgentAnalyticsBuilder: Sendable {
     }
 
     func buildCodex(now: Date, primaryLimit: RateLimitWindow?, secondaryLimit: RateLimitWindow?) -> AgentAnalyticsSnapshot {
-        let parsed = parseCodexSessions()
-        let patchEvents = readCodexPatchEvents()
+        let earliestDate = calendar.date(byAdding: .day, value: -29, to: calendar.startOfDay(for: now)) ?? calendar.startOfDay(for: now)
+        let parsed = parseCodexSessions(since: earliestDate)
+        let patchEvents = readCodexPatchEvents(since: earliestDate)
         let activityToday = makeHourlyActivity(range: .today, entries: parsed.activityEntries, now: now)
         let activityWeek = makeDailyActivity(range: .week, entries: parsed.activityEntries, now: now)
         let activityMonth = makeDailyActivity(range: .month, entries: parsed.activityEntries, now: now)
@@ -59,7 +60,8 @@ struct AgentAnalyticsBuilder: Sendable {
     }
 
     func buildClaude(now: Date) -> AgentAnalyticsSnapshot {
-        let parsed = parseClaudeSessions()
+        let earliestDate = calendar.date(byAdding: .day, value: -29, to: calendar.startOfDay(for: now)) ?? calendar.startOfDay(for: now)
+        let parsed = parseClaudeSessions(since: earliestDate)
         let activityToday = makeHourlyActivity(range: .today, entries: parsed.activityEntries, now: now)
         let activityWeek = makeDailyActivity(range: .week, entries: parsed.activityEntries, now: now)
         let activityMonth = makeDailyActivity(range: .month, entries: parsed.activityEntries, now: now)
@@ -94,7 +96,8 @@ struct AgentAnalyticsBuilder: Sendable {
     }
 
     func buildGemini(now: Date) -> AgentAnalyticsSnapshot {
-        let parsed = parseGeminiSessions()
+        let earliestDate = calendar.date(byAdding: .day, value: -29, to: calendar.startOfDay(for: now)) ?? calendar.startOfDay(for: now)
+        let parsed = parseGeminiSessions(since: earliestDate)
         let activityToday = makeHourlyActivity(range: .today, entries: parsed.activityEntries, now: now)
         let activityWeek = makeDailyActivity(range: .week, entries: parsed.activityEntries, now: now)
         let activityMonth = makeDailyActivity(range: .month, entries: parsed.activityEntries, now: now)
@@ -185,7 +188,7 @@ private extension AgentAnalyticsBuilder {
         var projectSamples: [ProjectSample] = []
     }
 
-    func parseCodexSessions() -> ParsedAnalyticsData {
+    func parseCodexSessions(since earliestDate: Date? = nil) -> ParsedAnalyticsData {
         guard FileManager.default.fileExists(atPath: codexSessionsRoot.path) else { return ParsedAnalyticsData() }
 
         var parsed = ParsedAnalyticsData()
@@ -197,6 +200,11 @@ private extension AgentAnalyticsBuilder {
 
         while let fileURL = enumerator?.nextObject() as? URL {
             guard fileURL.pathExtension == "jsonl" else { continue }
+            if let earliestDate,
+               let day = codexSessionDay(from: fileURL),
+               day < calendar.startOfDay(for: earliestDate) {
+                continue
+            }
             guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
             var sessionID = fileURL.deletingPathExtension().lastPathComponent
 
@@ -275,17 +283,42 @@ private extension AgentAnalyticsBuilder {
         return parsed
     }
 
-    func parseClaudeSessions() -> ParsedAnalyticsData {
+    func codexSessionDay(from fileURL: URL) -> Date? {
+        let components = fileURL.pathComponents
+        guard let sessionsIndex = components.lastIndex(of: "sessions"),
+              components.count > sessionsIndex + 3,
+              let year = Int(components[sessionsIndex + 1]),
+              let month = Int(components[sessionsIndex + 2]),
+              let day = Int(components[sessionsIndex + 3])
+        else {
+            return nil
+        }
+
+        var dateComponents = DateComponents()
+        dateComponents.year = year
+        dateComponents.month = month
+        dateComponents.day = day
+        return calendar.date(from: dateComponents)
+    }
+
+    func parseClaudeSessions(since earliestDate: Date? = nil) -> ParsedAnalyticsData {
         guard FileManager.default.fileExists(atPath: claudeProjectsRoot.path) else { return ParsedAnalyticsData() }
         var parsed = ParsedAnalyticsData()
         let enumerator = FileManager.default.enumerator(
             at: claudeProjectsRoot,
-            includingPropertiesForKeys: [.isRegularFileKey],
+            includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey],
             options: [.skipsHiddenFiles]
         )
 
         while let fileURL = enumerator?.nextObject() as? URL {
             guard fileURL.pathExtension == "jsonl" else { continue }
+            let resourceValues = try? fileURL.resourceValues(forKeys: [.contentModificationDateKey, .isRegularFileKey])
+            guard resourceValues?.isRegularFile == true else { continue }
+            if let earliestDate,
+               let modifiedAt = resourceValues?.contentModificationDate,
+               modifiedAt < earliestDate {
+                continue
+            }
             guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
 
             for rawLine in content.split(separator: "\n", omittingEmptySubsequences: false) {
@@ -297,6 +330,9 @@ private extension AgentAnalyticsBuilder {
                     let sessionID = json["sessionId"] as? String,
                     let type = json["type"] as? String
                 else {
+                    continue
+                }
+                if let earliestDate, timestamp < earliestDate {
                     continue
                 }
 
@@ -336,20 +372,35 @@ private extension AgentAnalyticsBuilder {
         return parsed
     }
 
-    func parseGeminiSessions() -> ParsedAnalyticsData {
+    func parseGeminiSessions(since earliestDate: Date? = nil) -> ParsedAnalyticsData {
         guard FileManager.default.fileExists(atPath: geminiLogsRoot.path) else { return ParsedAnalyticsData() }
         var parsed = ParsedAnalyticsData()
 
         let enumerator = FileManager.default.enumerator(
             at: geminiLogsRoot,
-            includingPropertiesForKeys: [.isRegularFileKey],
+            includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey],
             options: [.skipsHiddenFiles]
         )
 
-        var usedChats = false
+        var chatFiles: [URL] = []
+        var fallbackLogFiles: [URL] = []
         while let fileURL = enumerator?.nextObject() as? URL {
-            guard fileURL.pathComponents.contains("chats"), fileURL.pathExtension == "json" else { continue }
-            usedChats = true
+            let resourceValues = try? fileURL.resourceValues(forKeys: [.contentModificationDateKey, .isRegularFileKey])
+            guard resourceValues?.isRegularFile == true else { continue }
+            if let earliestDate,
+               let modifiedAt = resourceValues?.contentModificationDate,
+               modifiedAt < earliestDate {
+                continue
+            }
+            if fileURL.pathComponents.contains("chats"), fileURL.pathExtension == "json" {
+                chatFiles.append(fileURL)
+            } else if fileURL.lastPathComponent == "logs.json" {
+                fallbackLogFiles.append(fileURL)
+            }
+        }
+
+        let usedChats = chatFiles.isEmpty == false
+        for fileURL in chatFiles {
             guard let content = try? Data(contentsOf: fileURL),
                   let chat = try? JSONSerialization.jsonObject(with: content) as? [String: Any],
                   let sessionID = chat["sessionId"] as? String,
@@ -364,6 +415,9 @@ private extension AgentAnalyticsBuilder {
                     let timestampString = message["timestamp"] as? String,
                     let timestamp = ISO8601DateParser.parse(timestampString)
                 else {
+                    continue
+                }
+                if let earliestDate, timestamp < earliestDate {
                     continue
                 }
 
@@ -395,15 +449,8 @@ private extension AgentAnalyticsBuilder {
 
         guard !usedChats else { return parsed }
 
-        let fallbackEnumerator = FileManager.default.enumerator(
-            at: geminiLogsRoot,
-            includingPropertiesForKeys: [.isRegularFileKey],
-            options: [.skipsHiddenFiles]
-        )
-
-        while let fileURL = fallbackEnumerator?.nextObject() as? URL {
-            guard fileURL.lastPathComponent == "logs.json",
-                  let data = try? Data(contentsOf: fileURL),
+        for fileURL in fallbackLogFiles {
+            guard let data = try? Data(contentsOf: fileURL),
                   let items = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
             else {
                 continue
@@ -415,6 +462,9 @@ private extension AgentAnalyticsBuilder {
                     let timestamp = ISO8601DateParser.parse(timestampString),
                     let sessionID = item["sessionId"] as? String
                 else {
+                    continue
+                }
+                if let earliestDate, timestamp < earliestDate {
                     continue
                 }
 
@@ -444,7 +494,7 @@ private extension AgentAnalyticsBuilder {
         return parsed
     }
 
-    func readCodexPatchEvents() -> [PatchEvent] {
+    func readCodexPatchEvents(since earliestDate: Date? = nil) -> [PatchEvent] {
         guard FileManager.default.fileExists(atPath: codexStateDatabaseURL.path) else { return [] }
         var database: OpaquePointer?
         let openResult = sqlite3_open_v2(codexStateDatabaseURL.path, &database, SQLITE_OPEN_READONLY, nil)
@@ -456,16 +506,29 @@ private extension AgentAnalyticsBuilder {
         }
         defer { sqlite3_close(database) }
 
-        let query = """
-        SELECT ts, message
-        FROM logs
-        WHERE message LIKE '%ToolCall: apply_patch%'
-        """
+        let query: String
+        if earliestDate != nil {
+            query = """
+            SELECT ts, message
+            FROM logs
+            WHERE ts >= ? AND message LIKE '%ToolCall: apply_patch%'
+            """
+        } else {
+            query = """
+            SELECT ts, message
+            FROM logs
+            WHERE message LIKE '%ToolCall: apply_patch%'
+            """
+        }
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(database, query, -1, &statement, nil) == SQLITE_OK, let statement else {
             return []
         }
         defer { sqlite3_finalize(statement) }
+
+        if let earliestDate {
+            sqlite3_bind_double(statement, 1, earliestDate.timeIntervalSince1970)
+        }
 
         var events: [PatchEvent] = []
         while sqlite3_step(statement) == SQLITE_ROW {
