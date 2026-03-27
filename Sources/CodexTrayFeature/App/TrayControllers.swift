@@ -235,7 +235,7 @@ final class PanelWindowController: NSObject, NSWindowDelegate {
     private var globalMonitor: Any?
     private var resizeTimer: Timer?
     private var currentAnchorFrame: CGRect?
-    private var currentHeatmapRange: HeatmapRange = .year
+    private var currentPanelHeight: CGFloat = ScreenLayout.panelHeight(for: .year, agent: .all)
     private var currentSelectedAgent: AgentKind = .all
     private var isAnimating = false
     private let onVisibilityChange: (Bool) -> Void
@@ -254,11 +254,12 @@ final class PanelWindowController: NSObject, NSWindowDelegate {
             store: store,
             settingsStore: settingsStore,
             onQuit: onQuit,
-            onHeatmapRangeChange: { _, _ in }
+            onPreferredPanelHeightChange: { _, _ in }
         )
         hostingView = NSHostingView(rootView: rootView)
+        let initialHeight = Self.defaultPanelHeight(for: store.selectedAgent, heatmapRange: settingsStore.settings.defaultHeatmapRange)
         panel = FloatingPanel(
-            contentRect: CGRect(origin: .zero, size: ScreenLayout.panelSize(for: settingsStore.settings.defaultHeatmapRange, agent: store.selectedAgent)),
+            contentRect: CGRect(origin: .zero, size: ScreenLayout.panelSize(forHeight: initialHeight)),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -272,8 +273,8 @@ final class PanelWindowController: NSObject, NSWindowDelegate {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.delegate = self
         panel.alphaValue = 0
-        hostingView.rootView.onHeatmapRangeChange = { [weak self] range, agent in
-            self?.updatePanelLayout(for: range, agent: agent)
+        hostingView.rootView.onPreferredPanelHeightChange = { [weak self] height, agent in
+            self?.updatePanelLayout(for: height, agent: agent)
         }
     }
 
@@ -290,7 +291,7 @@ final class PanelWindowController: NSObject, NSWindowDelegate {
         guard panel.isVisible else { return }
         currentAnchorFrame = anchorFrame
         panel.setFrame(
-            ScreenLayout.panelFrame(anchoredTo: anchorFrame, range: currentHeatmapRange, agent: currentSelectedAgent),
+            ScreenLayout.panelFrame(anchoredTo: anchorFrame, panelSize: ScreenLayout.panelSize(forHeight: currentPanelHeight)),
             display: true
         )
     }
@@ -328,8 +329,8 @@ final class PanelWindowController: NSObject, NSWindowDelegate {
         settingsStore.markPanelPresented()
         currentAnchorFrame = anchor
         currentSelectedAgent = store.selectedAgent
-        currentHeatmapRange = settingsStore.settings.defaultHeatmapRange
-        let finalFrame = ScreenLayout.panelFrame(anchoredTo: anchor, range: currentHeatmapRange, agent: currentSelectedAgent)
+        currentPanelHeight = Self.defaultPanelHeight(for: currentSelectedAgent, heatmapRange: settingsStore.settings.defaultHeatmapRange)
+        let finalFrame = ScreenLayout.panelFrame(anchoredTo: anchor, panelSize: ScreenLayout.panelSize(forHeight: currentPanelHeight))
         let collapsedFrame = ScreenLayout.collapsedPanelFrame(anchoredTo: anchor)
         panel.setFrame(collapsedFrame, display: false)
         panel.alphaValue = 0
@@ -379,10 +380,10 @@ final class PanelWindowController: NSObject, NSWindowDelegate {
         }
     }
 
-    private func updatePanelLayout(for range: HeatmapRange, agent: AgentKind) {
-        currentHeatmapRange = range
+    private func updatePanelLayout(for height: CGFloat, agent: AgentKind) {
+        currentPanelHeight = height
         currentSelectedAgent = agent
-        let panelSize = ScreenLayout.panelSize(for: range, agent: agent)
+        let panelSize = ScreenLayout.panelSize(forHeight: height)
         guard panel.isVisible, !isAnimating else {
             hostingView.setFrameSize(panelSize)
             return
@@ -403,18 +404,16 @@ final class PanelWindowController: NSObject, NSWindowDelegate {
         )
 
         guard startFrame != targetFrame else { return }
-
+        let duration: TimeInterval = 0.18
+        let frameInterval: TimeInterval = 1.0 / 60.0
         let startTime = CACurrentMediaTime()
-        let duration = 0.18
 
-        resizeTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] timer in
+        resizeTimer = Timer.scheduledTimer(withTimeInterval: frameInterval, repeats: true) { [weak self] timer in
             guard let self else {
                 timer.invalidate()
                 return
             }
-
             MainActor.assumeIsolated {
-                
                 let elapsed = CACurrentMediaTime() - startTime
                 let rawProgress = min(max(elapsed / duration, 0), 1)
                 let easedProgress = 1 - pow(1 - rawProgress, 3)
@@ -440,6 +439,18 @@ final class PanelWindowController: NSObject, NSWindowDelegate {
         }
 
         RunLoop.main.add(resizeTimer!, forMode: .common)
+    }
+
+    private static func defaultPanelHeight(for agent: AgentKind, heatmapRange: HeatmapRange) -> CGFloat {
+        if agent == .all {
+            return ScreenLayout.panelHeight(for: heatmapRange, agent: .all)
+        }
+        return AgentAnalyticsLayout.preferredPanelHeight(
+            agent: agent,
+            tab: .activity,
+            analyticsRange: .today,
+            activityRange: .month
+        )
     }
 }
 
@@ -485,6 +496,10 @@ enum ScreenLayout {
     }
 
     static func panelSize(for range: HeatmapRange, agent: AgentKind) -> CGSize {
+        CGSize(width: panelWidth, height: panelHeight(for: range, agent: agent))
+    }
+
+    static func panelHeight(for range: HeatmapRange, agent: AgentKind) -> CGFloat {
         let baseHeight: CGFloat
         switch agent {
         case .all:
@@ -496,8 +511,11 @@ enum ScreenLayout {
         case .gemini:
             baseHeight = geminiBaseExpandedPanelHeight
         }
-        let height = baseHeight + (range.heatmapHeight - HeatmapRange.year.heatmapHeight)
-        return CGSize(width: panelWidth, height: height)
+        return baseHeight + (range.heatmapHeight - HeatmapRange.year.heatmapHeight)
+    }
+
+    static func panelSize(forHeight height: CGFloat) -> CGSize {
+        CGSize(width: panelWidth, height: height)
     }
 
     static func hotspotFrame() -> CGRect? {
@@ -511,6 +529,10 @@ enum ScreenLayout {
 
     static func panelFrame(anchoredTo anchorFrame: CGRect, range: HeatmapRange, agent: AgentKind) -> CGRect {
         let panelSize = panelSize(for: range, agent: agent)
+        return panelFrame(anchoredTo: anchorFrame, panelSize: panelSize)
+    }
+
+    static func panelFrame(anchoredTo anchorFrame: CGRect, panelSize: CGSize) -> CGRect {
         let width = panelSize.width
         let height = panelSize.height
         let screen = screenContaining(point: CGPoint(x: anchorFrame.midX, y: anchorFrame.midY)) ?? primaryScreen

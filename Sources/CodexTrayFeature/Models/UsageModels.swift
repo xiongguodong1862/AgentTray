@@ -188,6 +188,7 @@ public struct AgentSnapshot: Codable, Equatable, Sendable, Identifiable {
     public let today: UsageMetricsDay
     public let lastSevenDays: [UsageMetricsDay]
     public let lastYearDays: [UsageMetricsDay]
+    public let analytics: AgentAnalyticsSnapshot?
     public let currentModel: String?
     public let lastActiveAt: Date?
     public let environment: AgentEnvironmentSummary
@@ -202,6 +203,7 @@ public struct AgentSnapshot: Codable, Equatable, Sendable, Identifiable {
         today: UsageMetricsDay,
         lastSevenDays: [UsageMetricsDay],
         lastYearDays: [UsageMetricsDay],
+        analytics: AgentAnalyticsSnapshot? = nil,
         currentModel: String?,
         lastActiveAt: Date?,
         environment: AgentEnvironmentSummary,
@@ -213,6 +215,7 @@ public struct AgentSnapshot: Codable, Equatable, Sendable, Identifiable {
         self.today = today
         self.lastSevenDays = lastSevenDays
         self.lastYearDays = lastYearDays
+        self.analytics = analytics
         self.currentModel = currentModel
         self.lastActiveAt = lastActiveAt
         self.environment = environment
@@ -251,7 +254,7 @@ public struct MultiAgentSnapshot: Codable, Equatable, Sendable {
     public let generatedAt: Date
     public let agents: [AgentSnapshot]
     public let mostRecentlyActiveAgent: AgentKind?
-    public let focusedAgent: AgentKind
+    public var focusedAgent: AgentKind
     public let pet: PetProgress
     public let xpBreakdown: [AgentXPBreakdown]
     public let todaySummary: MultiAgentTodaySummary

@@ -5,8 +5,23 @@ struct PanelRootView: View {
     @ObservedObject var store: UsageStore
     @ObservedObject var settingsStore: AppSettingsStore
     let onQuit: () -> Void
-    var onHeatmapRangeChange: (HeatmapRange, AgentKind) -> Void
+    var onPreferredPanelHeightChange: (CGFloat, AgentKind) -> Void
     @State private var heatmapRange: HeatmapRange
+    @State private var analyticsTabSelection: [AgentKind: AgentAnalyticsTab] = [
+        .codex: .activity,
+        .claude: .activity,
+        .gemini: .activity,
+    ]
+    @State private var analyticsRangeSelection: [AgentKind: AnalyticsRange] = [
+        .codex: .today,
+        .claude: .today,
+        .gemini: .today,
+    ]
+    @State private var analyticsActivityRangeSelection: [AgentKind: HeatmapRange] = [
+        .codex: .month,
+        .claude: .month,
+        .gemini: .month,
+    ]
     @State private var isPetGuideHovered = false
     @State private var isSettingsPresented = false
     @State private var panelPointerLocation: CGPoint?
@@ -20,12 +35,12 @@ struct PanelRootView: View {
         store: UsageStore,
         settingsStore: AppSettingsStore,
         onQuit: @escaping () -> Void,
-        onHeatmapRangeChange: @escaping (HeatmapRange, AgentKind) -> Void
+        onPreferredPanelHeightChange: @escaping (CGFloat, AgentKind) -> Void
     ) {
         self.store = store
         self.settingsStore = settingsStore
         self.onQuit = onQuit
-        self.onHeatmapRangeChange = onHeatmapRangeChange
+        self.onPreferredPanelHeightChange = onPreferredPanelHeightChange
         _heatmapRange = State(initialValue: settingsStore.settings.defaultHeatmapRange)
     }
 
@@ -109,17 +124,20 @@ struct PanelRootView: View {
             if availableTabs.contains(selectedAgent) == false {
                 store.selectAgent(.all)
             }
-            onHeatmapRangeChange(heatmapRange, selectedAgent)
+            updatePreferredPanelHeight(for: selectedAgent)
         }
         .onChange(of: heatmapRange) { _, newValue in
-            onHeatmapRangeChange(newValue, selectedAgent)
+            if selectedAgent == .all {
+                onPreferredPanelHeightChange(ScreenLayout.panelHeight(for: newValue, agent: .all), .all)
+            }
         }
         .onChange(of: selectedAgent) { _, newValue in
-            onHeatmapRangeChange(heatmapRange, newValue)
+            updatePreferredPanelHeight(for: newValue)
         }
         .onReceive(settingsStore.$panelPresentationSequence.dropFirst()) { _ in
             heatmapRange = settingsStore.settings.defaultHeatmapRange
             isSettingsPresented = false
+            updatePreferredPanelHeight(for: selectedAgent)
         }
         .onReceive(Timer.publish(every: 5.6, on: .main, in: .common).autoconnect()) { _ in
             petDialogueTick += 1
@@ -179,20 +197,18 @@ struct PanelRootView: View {
     private func agentTabContent(for agent: AgentKind) -> some View {
         let snapshot = snapshot(for: agent)
         return VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .top, spacing: 18) {
-                statusBlock(for: snapshot)
-                    .frame(width: 220)
-
-                VerticalSectionDivider()
-                    .frame(height: 150)
-
-                todayBlock(for: snapshot)
-                    .frame(maxWidth: .infinity)
-            }
+            compactOverviewBlock(for: snapshot)
 
             HorizontalSectionDivider()
 
-            yearHeatmapArea(days: heatmapDays(for: agent), title: "\(agent.displayName) 活跃趋势")
+            AgentAnalyticsSectionView(
+                agent: agent,
+                snapshot: snapshot,
+                heatmapColorPreset: settingsStore.settings.heatmapColor,
+                selectedTab: analyticsTabBinding(for: agent),
+                selectedRange: analyticsRangeBinding(for: agent),
+                activityRange: analyticsActivityRangeBinding(for: agent)
+            )
         }
     }
 
@@ -317,20 +333,61 @@ struct PanelRootView: View {
     }
 
     private func statusBlock(for snapshot: AgentSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let rows = statusRows(for: snapshot)
+        return VStack(alignment: .leading, spacing: 12) {
             Text(AgentPanelLayoutPolicy.statusTitle(for: snapshot.agent))
                 .font(.system(size: 10, weight: .bold, design: .rounded))
                 .tracking(1.3)
                 .foregroundStyle(.white.opacity(0.42))
 
-            ForEach(statusRows(for: snapshot)) { row in
-                usageRow(
-                    label: row.label,
-                    value: row.value,
-                    remainingPercent: row.remainingPercent,
-                    resetHint: row.resetHint,
-                    showsProgressBar: row.showsProgressBar
-                )
+            if rows.count == 2 {
+                HStack(alignment: .top, spacing: 16) {
+                    ForEach(rows) { row in
+                        usageRow(
+                            label: row.label,
+                            value: row.value,
+                            remainingPercent: row.remainingPercent,
+                            resetHint: row.resetHint,
+                            showsProgressBar: row.showsProgressBar
+                        )
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            } else {
+                ForEach(rows) { row in
+                    usageRow(
+                        label: row.label,
+                        value: row.value,
+                        remainingPercent: row.remainingPercent,
+                        resetHint: row.resetHint,
+                        showsProgressBar: row.showsProgressBar
+                    )
+                }
+            }
+        }
+    }
+
+    private func compactOverviewBlock(for snapshot: AgentSnapshot) -> some View {
+        statusBlock(for: snapshot)
+    }
+
+    private func usageOverviewBlock(for snapshot: AgentSnapshot) -> some View {
+        let rows = compactUsageRows(for: snapshot)
+        return VStack(alignment: .leading, spacing: 12) {
+            Text("使用情况")
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .tracking(1.3)
+                .foregroundStyle(.white.opacity(0.42))
+
+            if rows.count == 2 {
+                HStack(alignment: .top, spacing: 14) {
+                    compactMetricCard(rows[0])
+                    compactMetricCard(rows[1])
+                }
+            } else {
+                ForEach(rows) { row in
+                    metricRowView(row)
+                }
             }
         }
     }
@@ -466,6 +523,27 @@ struct PanelRootView: View {
         }
     }
 
+    private func compactMetricCard(_ row: MetricRow) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(row.label)
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(.white.opacity(0.46))
+
+            Text(row.value)
+                .font(.system(size: 19, weight: .bold, design: .rounded))
+                .foregroundStyle(row.valueColor)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(.white.opacity(0.04))
+        )
+    }
+
     private var expandedBackground: LinearGradient {
         let gradientHexes = settingsStore.settings.themeTint.gradientHexes
         return LinearGradient(
@@ -484,6 +562,23 @@ struct PanelRootView: View {
     private func todayRows(for snapshot: AgentSnapshot) -> [MetricRow] {
         AgentPanelLayoutPolicy.todayMetrics(for: snapshot.agent).map { metric in
             metricRow(for: metric, snapshot: snapshot)
+        }
+    }
+
+    private func compactUsageRows(for snapshot: AgentSnapshot) -> [MetricRow] {
+        switch snapshot.agent {
+        case .codex:
+            return [
+                metricRow(for: .sessions, snapshot: snapshot),
+                metricRow(for: .activeMinutes, snapshot: snapshot),
+            ]
+        case .claude, .gemini:
+            return [
+                metricRow(for: .sessions, snapshot: snapshot),
+                metricRow(for: .activeMinutes, snapshot: snapshot),
+            ]
+        case .all:
+            return todayRows(for: snapshot)
         }
     }
 
@@ -617,6 +712,55 @@ struct PanelRootView: View {
     private func snapshot(for agent: AgentKind) -> AgentSnapshot {
         store.multiAgentSnapshot.snapshot(for: agent)
             ?? AgentSnapshot.empty(agent: agent, generatedAt: .now, runtimeLabel: agent.displayName, dataSourceLabel: "--")
+    }
+
+    private func analyticsTabBinding(for agent: AgentKind) -> Binding<AgentAnalyticsTab> {
+        Binding(
+            get: { analyticsTabSelection[agent] ?? .activity },
+            set: { newValue in
+                analyticsTabSelection[agent] = newValue
+                updatePreferredPanelHeight(for: agent)
+            }
+        )
+    }
+
+    private func analyticsRangeBinding(for agent: AgentKind) -> Binding<AnalyticsRange> {
+        Binding(
+            get: { analyticsRangeSelection[agent] ?? .today },
+            set: { newValue in
+                analyticsRangeSelection[agent] = newValue
+                updatePreferredPanelHeight(for: agent)
+            }
+        )
+    }
+
+    private func analyticsActivityRangeBinding(for agent: AgentKind) -> Binding<HeatmapRange> {
+        Binding(
+            get: { analyticsActivityRangeSelection[agent] ?? .month },
+            set: { newValue in
+                analyticsActivityRangeSelection[agent] = newValue
+                updatePreferredPanelHeight(for: agent)
+            }
+        )
+    }
+
+    private func updatePreferredPanelHeight(for agent: AgentKind) {
+        if agent == .all {
+            onPreferredPanelHeightChange(ScreenLayout.panelHeight(for: heatmapRange, agent: .all), .all)
+            return
+        }
+        let tab = analyticsTabSelection[agent] ?? .activity
+        let range = analyticsRangeSelection[agent] ?? .today
+        let activityRange = analyticsActivityRangeSelection[agent] ?? .month
+        onPreferredPanelHeightChange(
+            AgentAnalyticsLayout.preferredPanelHeight(
+                agent: agent,
+                tab: tab,
+                analyticsRange: range,
+                activityRange: activityRange
+            ),
+            agent
+        )
     }
 
     private func heatmapDays(for agent: AgentKind) -> [UsageMetricsDay] {
@@ -896,6 +1040,16 @@ enum UsageNumberFormatter {
         }
         if value >= 1_000 {
             return String(format: "%.1fK", Double(value) / 1_000)
+        }
+        return "\(value)"
+    }
+
+    static func tokenCompactCount(_ value: Int) -> String {
+        if value >= 1_000_000 {
+            return String(format: "%.2fm", Double(value) / 1_000_000)
+        }
+        if value >= 1_000 {
+            return String(format: "%.2fk", Double(value) / 1_000)
         }
         return "\(value)"
     }

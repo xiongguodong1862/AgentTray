@@ -87,16 +87,22 @@ public final class UsageStore: ObservableObject {
 
         do {
             let builder = self.builder
-            let latestSnapshot = try await Task.detached(priority: .utility) {
-                try builder.buildSnapshot(now: Date())
+            let multiAgentBuilder = self.multiAgentBuilder
+            let environmentInfo = self.environmentInfo
+            let focusedAgent = self.focusedAgent
+            let result = try await Task.detached(priority: .utility) {
+                let latestSnapshot = try builder.buildSnapshot(now: Date())
+                let latestMultiAgentSnapshot = multiAgentBuilder.build(
+                    codexSnapshot: latestSnapshot,
+                    codexEnvironment: environmentInfo,
+                    focusedAgent: focusedAgent,
+                    now: latestSnapshot.generatedAt
+                )
+                return (latestSnapshot, latestMultiAgentSnapshot)
             }.value
+            let latestSnapshot = result.0
             snapshot = latestSnapshot
-            multiAgentSnapshot = multiAgentBuilder.build(
-                codexSnapshot: latestSnapshot,
-                codexEnvironment: environmentInfo,
-                focusedAgent: focusedAgent,
-                now: latestSnapshot.generatedAt
-            )
+            multiAgentSnapshot = result.1
             reconcileSelection()
             try? codexCacheStore.save(latestSnapshot)
             try? multiAgentCacheStore.save(multiAgentSnapshot)
@@ -115,18 +121,7 @@ public final class UsageStore: ObservableObject {
         if agent != .all {
             focusedAgent = agent
         }
-        multiAgentSnapshot = MultiAgentSnapshot(
-            generatedAt: multiAgentSnapshot.generatedAt,
-            agents: multiAgentSnapshot.agents,
-            mostRecentlyActiveAgent: multiAgentSnapshot.mostRecentlyActiveAgent,
-            focusedAgent: focusedAgent,
-            pet: multiAgentSnapshot.pet,
-            xpBreakdown: multiAgentSnapshot.xpBreakdown,
-            todaySummary: multiAgentSnapshot.todaySummary,
-            lastSevenDays: multiAgentSnapshot.lastSevenDays,
-            lastMonthDays: multiAgentSnapshot.lastMonthDays,
-            lastYearDays: multiAgentSnapshot.lastYearDays
-        )
+        multiAgentSnapshot.focusedAgent = focusedAgent
         reconcileSelection()
     }
 

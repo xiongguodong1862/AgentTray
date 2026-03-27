@@ -3,10 +3,13 @@ import Foundation
 public struct MultiAgentSnapshotBuilder: Sendable {
     private let claudeBuilder: ClaudeUsageSnapshotBuilder
     private let geminiBuilder: GeminiUsageSnapshotBuilder
+    private let analyticsBuilder: AgentAnalyticsBuilder
     private let calendar: Calendar
     private let petBaselineStore: PetProgressBaselineStore
     private let codexSessionsRoot: URL
     private let claudeProjectsRoot: URL
+    private let codexStateDatabaseURL: URL
+    private let geminiLogsRoot: URL
 
     public init(
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
@@ -17,9 +20,18 @@ public struct MultiAgentSnapshotBuilder: Sendable {
         self.calendar = calendar
         self.petBaselineStore = petBaselineStore
         self.codexSessionsRoot = installation.sessionsRoot
+        self.codexStateDatabaseURL = installation.stateDatabaseURL
         self.claudeProjectsRoot = homeDirectory.appending(path: ".claude/projects", directoryHint: .isDirectory)
+        self.geminiLogsRoot = homeDirectory.appending(path: ".gemini/tmp", directoryHint: .isDirectory)
         self.claudeBuilder = ClaudeUsageSnapshotBuilder(projectsRoot: self.claudeProjectsRoot, calendar: calendar)
         self.geminiBuilder = GeminiUsageSnapshotBuilder(homeDirectory: homeDirectory, calendar: calendar)
+        self.analyticsBuilder = AgentAnalyticsBuilder(
+            codexSessionsRoot: installation.sessionsRoot,
+            codexStateDatabaseURL: installation.stateDatabaseURL,
+            claudeProjectsRoot: self.claudeProjectsRoot,
+            geminiLogsRoot: self.geminiLogsRoot,
+            calendar: calendar
+        )
     }
 
     public func placeholder(
@@ -44,6 +56,7 @@ public struct MultiAgentSnapshotBuilder: Sendable {
             today: codexSnapshot.today,
             lastSevenDays: codexSnapshot.lastSevenDays.map { withSourceAgent($0, agent: .codex) },
             lastYearDays: codexSnapshot.lastYearDays.map { withSourceAgent($0, agent: .codex) },
+            analytics: analyticsBuilder.buildCodex(now: now, primaryLimit: codexSnapshot.primaryLimit, secondaryLimit: codexSnapshot.secondaryLimit),
             currentModel: nil,
             lastActiveAt: codexSnapshot.lastSevenDays.last(where: { $0.activityScore > 0 })?.date,
             environment: AgentEnvironmentSummary(
@@ -83,6 +96,7 @@ public struct MultiAgentSnapshotBuilder: Sendable {
             today: codexSnapshot.today,
             lastSevenDays: codexSnapshot.lastSevenDays.map { withSourceAgent($0, agent: .codex) },
             lastYearDays: codexSnapshot.lastYearDays.map { withSourceAgent($0, agent: .codex) },
+            analytics: analyticsBuilder.buildCodex(now: now, primaryLimit: codexSnapshot.primaryLimit, secondaryLimit: codexSnapshot.secondaryLimit),
             currentModel: nil,
             lastActiveAt: lastActiveDate(in: codexSnapshot.lastYearDays),
             environment: AgentEnvironmentSummary(
@@ -95,9 +109,9 @@ public struct MultiAgentSnapshotBuilder: Sendable {
             isAvailable: codexSnapshot.hasSourceData
         )
 
-        let claudeAgent = (try? claudeBuilder.build(now: now))
+        let claudeAgent = (try? claudeBuilder.build(now: now, analytics: analyticsBuilder.buildClaude(now: now)))
             ?? AgentSnapshot.empty(agent: .claude, generatedAt: now, runtimeLabel: "Claude Code", dataSourceLabel: "~/.claude/projects")
-        let geminiAgent = (try? geminiBuilder.build(now: now))
+        let geminiAgent = (try? geminiBuilder.build(now: now, analytics: analyticsBuilder.buildGemini(now: now)))
             ?? AgentSnapshot.empty(agent: .gemini, generatedAt: now, runtimeLabel: "Gemini CLI", dataSourceLabel: "~/.gemini")
 
         return aggregate(now: now, agents: [codexAgent, claudeAgent, geminiAgent], focusedAgent: focusedAgent)
@@ -315,7 +329,7 @@ struct ClaudeUsageSnapshotBuilder: Sendable {
         self.calendar = calendar
     }
 
-    func build(now: Date = .now) throws -> AgentSnapshot {
+    func build(now: Date = .now, analytics: AgentAnalyticsSnapshot? = nil) throws -> AgentSnapshot {
         guard FileManager.default.fileExists(atPath: projectsRoot.path) else {
             return AgentSnapshot.empty(agent: .claude, generatedAt: now, runtimeLabel: "Claude Code", dataSourceLabel: "~/.claude/projects")
         }
@@ -390,6 +404,7 @@ struct ClaudeUsageSnapshotBuilder: Sendable {
             today: today,
             lastSevenDays: Array(daily.suffix(7)),
             lastYearDays: daily,
+            analytics: analytics,
             currentModel: currentModel,
             lastActiveAt: lastActiveAt,
             environment: AgentEnvironmentSummary(
@@ -450,7 +465,7 @@ struct GeminiUsageSnapshotBuilder: Sendable {
         self.calendar = calendar
     }
 
-    func build(now: Date = .now) throws -> AgentSnapshot {
+    func build(now: Date = .now, analytics: AgentAnalyticsSnapshot? = nil) throws -> AgentSnapshot {
         let dataSourceLabel = logsRoot.path
         guard FileManager.default.fileExists(atPath: logsRoot.path) else {
             return AgentSnapshot.empty(agent: .gemini, generatedAt: now, runtimeLabel: "Gemini CLI", dataSourceLabel: dataSourceLabel)
@@ -520,6 +535,7 @@ struct GeminiUsageSnapshotBuilder: Sendable {
             today: today,
             lastSevenDays: Array(daily.suffix(7)),
             lastYearDays: daily,
+            analytics: analytics,
             currentModel: currentModel,
             lastActiveAt: lastActiveAt,
             environment: AgentEnvironmentSummary(
@@ -768,6 +784,7 @@ extension AgentSnapshot {
             today: lastYearDays.last ?? .empty(for: startOfDay),
             lastSevenDays: Array(lastYearDays.suffix(7)),
             lastYearDays: lastYearDays,
+            analytics: nil,
             currentModel: nil,
             lastActiveAt: nil,
             environment: AgentEnvironmentSummary(
