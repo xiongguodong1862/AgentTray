@@ -74,7 +74,7 @@ public struct UsageMetricsDay: Codable, Equatable, Identifiable, Sendable {
         tokenUsage: Int = 0,
         toolCalls: Int = 0,
         customActivityScore: Double? = nil,
-        interactionLabel: String = "对话",
+        interactionLabel: String = "Conversation",
         sourceAgents: [String] = []
     ) {
         self.date = date
@@ -122,7 +122,7 @@ public struct UsageMetricsDay: Codable, Equatable, Identifiable, Sendable {
             tokenUsage: 0,
             toolCalls: 0,
             customActivityScore: nil,
-            interactionLabel: "对话",
+            interactionLabel: AppText.text("Conversation", "对话"),
             sourceAgents: []
         )
     }
@@ -301,15 +301,15 @@ public enum PetStage: String, Codable, Equatable, CaseIterable, Sendable {
     public var displayName: String {
         switch self {
         case .cursorEgg:
-            "喵喵蛋"
+            AppText.text("Kitty Egg", "喵喵蛋")
         case .pixelKitten:
-            "像素喵"
+            AppText.text("Pixel Kitty", "像素喵")
         case .terminalCat:
-            "终端喵"
+            AppText.text("Terminal Cat", "终端喵")
         case .mechPatchCat:
-            "补丁喵"
+            AppText.text("Patch Cat", "补丁喵")
         case .notchGuardian:
-            "守护喵"
+            AppText.text("Notch Guardian", "守护喵")
         }
     }
 
@@ -495,16 +495,22 @@ public enum PetProgressExplanationFormatter {
     }
 
     public static func xpFormulaDescription() -> String {
-        "单日 XP = round(3×会话数 + 0.5×活跃分钟 + 2×修改文件数 + 1.2×sqrt(新增行数+删除行数))"
+        AppText.text(
+            "Daily XP = round(3×sessions + 0.5×active minutes + 2×modified files + 1.2×sqrt(added lines + deleted lines))",
+            "单日 XP = round(3×会话数 + 0.5×活跃分钟 + 2×修改文件数 + 1.2×sqrt(新增行数+删除行数))"
+        )
     }
 
     public static func progressRuleDescription() -> String {
-        "宠物总经验按首次打开应用后的新增 XP 累计计算。"
+        AppText.text(
+            "Total pet XP only counts XP earned after you first opened the app.",
+            "宠物总经验按首次打开应用后的新增 XP 累计计算。"
+        )
     }
 
     public static func agentContributionDescriptions(from entries: [AgentXPBreakdown]) -> [String] {
         guard entries.isEmpty == false else {
-            return ["暂无可统计的 Agent 经验"]
+            return [AppText.text("No agent XP available yet", "暂无可统计的 Agent 经验")]
         }
 
         let sortedEntries = entries.sorted { lhs, rhs in
@@ -515,16 +521,19 @@ public enum PetProgressExplanationFormatter {
         }
         let totalXP = sortedEntries.reduce(0) { $0 + $1.totalXP }
         let detailLines = sortedEntries.map {
-            "\($0.agent.displayName): 今日 +\($0.todayXP) / 近一年累计 \($0.totalXP)"
+            AppText.text(
+                "\($0.agent.displayName): Today +\($0.todayXP) / Last year total \($0.totalXP)",
+                "\($0.agent.displayName): 今日 +\($0.todayXP) / 近一年累计 \($0.totalXP)"
+            )
         }
-        return ["全部 Agent 近一年累计: \(totalXP) XP"] + detailLines
+        return [AppText.text("All agents, last year total: \(totalXP) XP", "全部 Agent 近一年累计: \(totalXP) XP")] + detailLines
     }
 
     public static func tooltipText(from entries: [AgentXPBreakdown]) -> String {
         (
-            ["等级名称"]
+            [AppText.text("Level Names", "等级名称")]
             + levelDescriptions()
-            + ["", "经验计算", xpFormulaDescription(), progressRuleDescription(), "", "各 Agent 贡献"]
+            + ["", AppText.text("XP Formula", "经验计算"), xpFormulaDescription(), progressRuleDescription(), "", AppText.text("Agent Contribution", "各 Agent 贡献")]
             + agentContributionDescriptions(from: entries)
         )
         .joined(separator: "\n")
@@ -537,11 +546,11 @@ public enum DurationFormatter {
         let remainingMinutes = minutes % 60
         switch (hours, remainingMinutes) {
         case (0, _):
-            return "\(remainingMinutes)分"
+            return AppText.text("\(remainingMinutes)m", "\(remainingMinutes)分")
         case (_, 0):
-            return "\(hours)小时"
+            return AppText.text("\(hours)h", "\(hours)小时")
         default:
-            return "\(hours)小时\(remainingMinutes)分"
+            return AppText.text("\(hours)h \(remainingMinutes)m", "\(hours)小时\(remainingMinutes)分")
         }
     }
 }

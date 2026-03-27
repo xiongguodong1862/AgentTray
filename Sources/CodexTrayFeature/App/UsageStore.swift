@@ -18,6 +18,7 @@ public final class UsageStore: ObservableObject {
     private let agentCacheStore: AgentSnapshotCacheStore
     private let settingsStore: AppSettingsStore
     private var defaultAgentCancellable: AnyCancellable?
+    private var languageCancellable: AnyCancellable?
 
     init(
         builder: CodexUsageSnapshotBuilder = CodexUsageSnapshotBuilder(),
@@ -64,6 +65,14 @@ public final class UsageStore: ObservableObject {
             .removeDuplicates()
             .sink { [weak self] preference in
                 self?.applyDefaultAgent(preference)
+            }
+        languageCancellable = settingsStore.$settings
+            .map(\.language)
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] language in
+                AppText.setLanguage(language)
+                Task { await self?.refresh() }
             }
     }
 

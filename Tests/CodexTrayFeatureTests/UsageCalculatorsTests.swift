@@ -10,9 +10,9 @@ final class UsageCalculatorsTests: XCTestCase {
     }
 
     func testAgentPanelLayoutPolicyUsesCompactStatusTitleForNonCodexAgents() {
-        XCTAssertEqual(AgentPanelLayoutPolicy.statusTitle(for: .codex), "配额 / 状态")
-        XCTAssertEqual(AgentPanelLayoutPolicy.statusTitle(for: .claude), "使用情况")
-        XCTAssertEqual(AgentPanelLayoutPolicy.statusTitle(for: .gemini), "使用情况")
+        XCTAssertEqual(AgentPanelLayoutPolicy.statusTitle(for: .codex), "Limits / Status")
+        XCTAssertEqual(AgentPanelLayoutPolicy.statusTitle(for: .claude), "Usage")
+        XCTAssertEqual(AgentPanelLayoutPolicy.statusTitle(for: .gemini), "Usage")
     }
 
     func testAgentPanelLayoutPolicyFormatsHeaderStatusWithTodayTokenForGemini() {
@@ -130,11 +130,11 @@ final class UsageCalculatorsTests: XCTestCase {
         XCTAssertEqual(
             PetProgressExplanationFormatter.levelDescriptions(),
             [
-                "Lv.0-2: 喵喵蛋",
-                "Lv.3-5: 像素喵",
-                "Lv.6-9: 终端喵",
-                "Lv.10-14: 补丁喵",
-                "Lv.15+: 守护喵",
+                "Lv.0-2: Kitty Egg",
+                "Lv.3-5: Pixel Kitty",
+                "Lv.6-9: Terminal Cat",
+                "Lv.10-14: Patch Cat",
+                "Lv.15+: Notch Guardian",
             ]
         )
     }
@@ -150,9 +150,9 @@ final class UsageCalculatorsTests: XCTestCase {
         XCTAssertEqual(
             descriptions,
             [
-                "全部 Agent 近一年累计: 420 XP",
-                "Codex: 今日 +12 / 近一年累计 300",
-                "Claude: 今日 +7 / 近一年累计 120",
+                "All agents, last year total: 420 XP",
+                "Codex: Today +12 / Last year total 300",
+                "Claude: Today +7 / Last year total 120",
             ]
         )
     }
@@ -164,23 +164,23 @@ final class UsageCalculatorsTests: XCTestCase {
             ]
         )
 
-        XCTAssertTrue(tooltip.contains("等级名称"))
-        XCTAssertTrue(tooltip.contains("经验计算"))
-        XCTAssertTrue(tooltip.contains("各 Agent 贡献"))
-        XCTAssertTrue(tooltip.contains("Codex: 今日 +12 / 近一年累计 300"))
+        XCTAssertTrue(tooltip.contains("Level Names"))
+        XCTAssertTrue(tooltip.contains("XP Formula"))
+        XCTAssertTrue(tooltip.contains("Agent Contribution"))
+        XCTAssertTrue(tooltip.contains("Codex: Today +12 / Last year total 300"))
     }
 
     func testPetStatusFormatterReturnsRestingLineWithoutTodayXP() {
         let progress = PetProgress(level: 2, stage: .cursorEgg, currentXP: 40, nextLevelXP: 350, todayXP: 0)
 
-        XCTAssertEqual(PetStatusFormatter.statusLine(for: progress), "打个小盹，等你开始今天的冒险")
+        XCTAssertEqual(PetStatusFormatter.statusLine(for: progress), "Taking a tiny nap until today's adventure begins")
         XCTAssertEqual(PetStatusFormatter.indicatorHex(for: progress), "#A0AEC0")
     }
 
     func testPetStatusFormatterReturnsGuardianLineForHighLevelPet() {
         let progress = PetProgress(level: 15, stage: .notchGuardian, currentXP: 18, nextLevelXP: 1_455, todayXP: 12)
 
-        XCTAssertEqual(PetStatusFormatter.statusLine(for: progress), "守护模式在线，正在盯着你的进度")
+        XCTAssertEqual(PetStatusFormatter.statusLine(for: progress), "Guardian mode online, keeping an eye on your progress")
         XCTAssertEqual(PetStatusFormatter.indicatorHex(for: progress), "#A4A7FF")
     }
 
@@ -276,13 +276,13 @@ final class UsageCalculatorsTests: XCTestCase {
     }
 
     func testPetTapReactionUsesStageSpecificLabels() {
-        XCTAssertEqual(PetTapReaction.squint.label(for: .cursorEgg), "蛋壳眨眨")
-        XCTAssertEqual(PetTapReaction.tailFlick.label(for: .terminalCat), "终端甩尾")
+        XCTAssertEqual(PetTapReaction.squint.label(for: .cursorEgg), "Shell blink")
+        XCTAssertEqual(PetTapReaction.tailFlick.label(for: .terminalCat), "Terminal tail flick")
     }
 
     func testPetEasterEggUsesStageSpecificLabels() {
-        XCTAssertEqual(PetEasterEgg.hoverNuzzle.label(for: .cursorEgg), "轻轻蹭壳")
-        XCTAssertEqual(PetEasterEgg.tapOverload.label(for: .mechPatchCat), "动力过载!")
+        XCTAssertEqual(PetEasterEgg.hoverNuzzle.label(for: .cursorEgg), "Soft shell nuzzle")
+        XCTAssertEqual(PetEasterEgg.tapOverload.label(for: .mechPatchCat), "Power overload!")
     }
 
     func testPetPreviewFactoryCreatesExpectedPreviewMilestones() {
@@ -345,8 +345,8 @@ final class UsageCalculatorsTests: XCTestCase {
             UsageDisplayFormatter.heatmapTooltipText(for: day, dateFormatter: formatter),
             """
             2024年3月24日
-            3 次对话
-            活跃 42分
+            3 conversations
+            Active 42m
             """
         )
     }
@@ -362,8 +362,8 @@ final class UsageCalculatorsTests: XCTestCase {
             UsageDisplayFormatter.heatmapTooltipText(for: day, dateFormatter: formatter),
             """
             2024年3月24日
-            0 次对话
-            活跃 0分
+            0 conversations
+            Active 0m
             """
         )
     }
@@ -387,8 +387,8 @@ final class UsageCalculatorsTests: XCTestCase {
             UsageDisplayFormatter.heatmapTooltipText(for: day, dateFormatter: formatter),
             """
             2024年3月24日
-            3 次对话
-            活跃 42分
+            3 conversations
+            Active 42m
             Token 3.2K
             """
         )
@@ -397,7 +397,7 @@ final class UsageCalculatorsTests: XCTestCase {
     func testUsageDisplayFormatterFormatsResetHint() {
         let date = Date(timeIntervalSince1970: 1_700_000_000)
         let timeZone = TimeZone(secondsFromGMT: 8 * 60 * 60) ?? .current
-        XCTAssertEqual(UsageDisplayFormatter.resetHint(for: date, timeZone: timeZone), "11/15 06:13 重置")
+        XCTAssertEqual(UsageDisplayFormatter.resetHint(for: date, timeZone: timeZone), "11/15 06:13 reset")
         XCTAssertNil(UsageDisplayFormatter.resetHint(for: nil))
     }
 
@@ -408,7 +408,7 @@ final class UsageCalculatorsTests: XCTestCase {
 
         XCTAssertEqual(
             UsageDisplayFormatter.resetDetail(for: resetAt, relativeTo: now, timeZone: timeZone),
-            "11/15 11:07 重置 | 剩余 4小时54分"
+            "11/15 11:07 reset | 4h 54m left"
         )
         XCTAssertNil(UsageDisplayFormatter.resetDetail(for: nil, relativeTo: now, timeZone: timeZone))
     }
@@ -448,7 +448,7 @@ final class UsageCalculatorsTests: XCTestCase {
 
         XCTAssertEqual(
             HeatmapLabelFormatter.yearMonthLabel(for: aprilFirstWeek, previousWeek: nil, calendar: calendar),
-            "4月"
+            "Apr"
         )
         XCTAssertEqual(
             HeatmapLabelFormatter.yearMonthLabel(for: aprilSecondWeek, previousWeek: aprilFirstWeek, calendar: calendar),
@@ -456,7 +456,7 @@ final class UsageCalculatorsTests: XCTestCase {
         )
         XCTAssertEqual(
             HeatmapLabelFormatter.yearMonthLabel(for: mayBoundaryWeek, previousWeek: aprilSecondWeek, calendar: calendar),
-            "5月"
+            "May"
         )
     }
 

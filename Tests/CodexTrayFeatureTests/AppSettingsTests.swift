@@ -8,6 +8,7 @@ final class AppSettingsTests: XCTestCase {
         let storageKey = "CodexTrayFeatureTests.settings"
 
         let store = AppSettingsStore(userDefaults: defaults, storageKey: storageKey)
+        store.updateLanguage(.chinese)
         store.updateDefaultAgent(.claude)
         store.updateDefaultHeatmapRange(.month)
         store.updateRefreshInterval(.fiveMinutes)
@@ -19,6 +20,7 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(
             reloaded.settings,
             AppSettings(
+                language: .chinese,
                 defaultAgent: .claude,
                 defaultHeatmapRange: .month,
                 refreshInterval: .fiveMinutes,

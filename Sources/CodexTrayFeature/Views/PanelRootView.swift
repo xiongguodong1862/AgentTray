@@ -2,7 +2,7 @@ import Combine
 import SwiftUI
 
 struct PanelRootView: View {
-    static let loadingStatusText = "数据整理中"
+    static var loadingStatusText: String { AppText.text("Loading data", "数据整理中") }
 
     @ObservedObject var store: UsageStore
     @ObservedObject var settingsStore: AppSettingsStore
@@ -215,7 +215,7 @@ struct PanelRootView: View {
 
             HorizontalSectionDivider()
 
-            yearHeatmapArea(days: heatmapDays(for: .all), title: "跨 Agent 活跃趋势")
+            yearHeatmapArea(days: heatmapDays(for: .all), title: AppText.text("Cross-Agent Activity", "跨 Agent 活跃趋势"))
         }
     }
 
@@ -291,7 +291,10 @@ struct PanelRootView: View {
                 ))
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("\(displayedProgress.currentXP)/\(displayedProgress.nextLevelXP)（今日经验：\(displayedProgress.todayXP)）")
+                    Text(AppText.text(
+                        "\(displayedProgress.currentXP)/\(displayedProgress.nextLevelXP) (Today XP: \(displayedProgress.todayXP))",
+                        "\(displayedProgress.currentXP)/\(displayedProgress.nextLevelXP)（今日经验：\(displayedProgress.todayXP)）"
+                    ))
                         .font(.system(size: 10, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white.opacity(0.6))
                         .lineLimit(1)
@@ -317,7 +320,7 @@ struct PanelRootView: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("经验来源")
+                Text(AppText.text("XP Sources", "经验来源"))
                     .font(.system(size: 10, weight: .bold, design: .rounded))
                     .tracking(1.1)
                     .foregroundStyle(.white.opacity(0.42))
@@ -350,10 +353,10 @@ struct PanelRootView: View {
 
     private var allSummaryBlock: some View {
         VStack(alignment: .leading, spacing: 18) {
-            summaryMetricRow(label: "最近活跃", value: recentAgentLabel, valueColor: .white)
-            summaryMetricRow(label: "今日活跃时长", value: DurationFormatter.string(for: store.multiAgentSnapshot.todaySummary.totalActiveMinutes), valueColor: .white)
-            summaryMetricRow(label: "今日会话数", value: "\(store.multiAgentSnapshot.todaySummary.totalSessions)", valueColor: .white)
-            summaryMetricRow(label: "今日 Token", value: UsageNumberFormatter.compactCount(store.multiAgentSnapshot.todaySummary.totalTokenUsage), valueColor: .white)
+            summaryMetricRow(label: AppText.text("Recent Activity", "最近活跃"), value: recentAgentLabel, valueColor: .white)
+            summaryMetricRow(label: AppText.text("Active Time Today", "今日活跃时长"), value: DurationFormatter.string(for: store.multiAgentSnapshot.todaySummary.totalActiveMinutes), valueColor: .white)
+            summaryMetricRow(label: AppText.text("Sessions Today", "今日会话数"), value: "\(store.multiAgentSnapshot.todaySummary.totalSessions)", valueColor: .white)
+            summaryMetricRow(label: AppText.text("Tokens Today", "今日 Token"), value: UsageNumberFormatter.compactCount(store.multiAgentSnapshot.todaySummary.totalTokenUsage), valueColor: .white)
         }
     }
 
@@ -406,7 +409,7 @@ struct PanelRootView: View {
 
                 Spacer()
 
-                Picker("时间范围", selection: $heatmapRange) {
+                Picker(AppText.text("Time Range", "时间范围"), selection: $heatmapRange) {
                     ForEach(HeatmapRange.allCases) { range in
                         Text(range.title).tag(range)
                     }
@@ -450,11 +453,11 @@ struct PanelRootView: View {
                 Button {
                     isSettingsPresented.toggle()
                 } label: {
-                    Label("设置", systemImage: "gearshape.fill")
+                    Label(AppText.text("Settings", "设置"), systemImage: "gearshape.fill")
                 }
                 .buttonStyle(ChromeButtonStyle(tint: .white.opacity(0.12)))
 
-                Button("退出", action: onQuit)
+                Button(AppText.text("Quit", "退出"), action: onQuit)
                     .buttonStyle(ChromeButtonStyle(tint: .white.opacity(0.12)))
             }
         }
@@ -563,7 +566,7 @@ struct PanelRootView: View {
         case .claude, .gemini:
             var rows = [
                 StatusRow(
-                    label: "近7天平均会话 Token",
+                    label: AppText.text("Avg Tokens / Session (7d)", "近7天平均会话 Token"),
                     value: AgentPanelLayoutPolicy.recentAverageTokensPerSessionText(for: snapshot),
                     remainingPercent: nil,
                     resetHint: nil,
@@ -690,14 +693,14 @@ struct PanelRootView: View {
 
     private var recentAgentLabel: String {
         guard let agent = store.multiAgentSnapshot.mostRecentlyActiveAgent else {
-            return "暂无"
+            return AppText.text("None", "暂无")
         }
         return agent.displayName
     }
 
     private func xpBreakdownText(from entries: [AgentXPBreakdown]) -> String {
         if entries.isEmpty {
-            return "暂无经验变动"
+            return AppText.text("No XP change yet", "暂无经验变动")
         }
         return entries
             .map { "\($0.agent.displayName) +\($0.todayXP)" }
@@ -711,7 +714,10 @@ struct PanelRootView: View {
                 runtimeLabel: "Multi-Agent",
                 authLabel: nil,
                 currentModel: nil,
-                dataSourceLabel: "已接入 \(store.multiAgentSnapshot.agents.filter(\.isAvailable).count) 个 Agent",
+                dataSourceLabel: AppText.text(
+                    "\(store.multiAgentSnapshot.agents.filter(\.isAvailable).count) agents connected",
+                    "已接入 \(store.multiAgentSnapshot.agents.filter(\.isAvailable).count) 个 Agent"
+                ),
                 updatedAt: store.multiAgentSnapshot.generatedAt
             )
         case .codex, .claude, .gemini:
@@ -720,14 +726,14 @@ struct PanelRootView: View {
     }
 
     private func environmentSummaryLine(_ environment: AgentEnvironmentSummary) -> String {
-        var parts = ["当前环境：\(environment.runtimeLabel)"]
+        var parts = [AppText.text("Environment: \(environment.runtimeLabel)", "当前环境：\(environment.runtimeLabel)")]
         if let currentModel = environment.currentModel, !currentModel.isEmpty {
-            parts.append("当前模型：\(currentModel)")
+            parts.append(AppText.text("Model: \(currentModel)", "当前模型：\(currentModel)"))
         }
         if let authLabel = environment.authLabel, !authLabel.isEmpty {
-            parts.append("认证方式：\(authLabel)")
+            parts.append(AppText.text("Auth: \(authLabel)", "认证方式：\(authLabel)"))
         }
-        parts.append("数据源：\(environment.dataSourceLabel)")
+        parts.append(AppText.text("Data Source: \(environment.dataSourceLabel)", "数据源：\(environment.dataSourceLabel)"))
         return parts.joined(separator: "  ·  ")
     }
 
@@ -885,7 +891,9 @@ struct StatusRow: Identifiable {
 
 enum AgentPanelLayoutPolicy {
     static func statusTitle(for agent: AgentKind) -> String {
-        agent == .codex ? "配额 / 状态" : "使用情况"
+        agent == .codex
+            ? AppText.text("Limits / Status", "配额 / 状态")
+            : AppText.text("Usage", "使用情况")
     }
 
     static func headerStatusText(for snapshot: AgentSnapshot) -> String {
@@ -937,17 +945,17 @@ enum UsageDisplayFormatter {
     ) -> String {
         var lines = [
             dateFormatter.string(from: day.date),
-            "\(day.dialogs) 次\(day.interactionLabel)",
-            "活跃 \(durationFormatter(day.activeMinutes))",
+            AppText.text("\(day.dialogs) \(day.interactionLabel.lowercased())s", "\(day.dialogs) 次\(day.interactionLabel)"),
+            AppText.text("Active \(durationFormatter(day.activeMinutes))", "活跃 \(durationFormatter(day.activeMinutes))"),
         ]
         if day.tokenUsage > 0 {
             lines.append("Token \(UsageNumberFormatter.compactCount(day.tokenUsage))")
         }
         if day.toolCalls > 0 {
-            lines.append("工具 \(day.toolCalls)")
+            lines.append(AppText.text("Tools \(day.toolCalls)", "工具 \(day.toolCalls)"))
         }
         if day.sourceAgents.isEmpty == false {
-            lines.append("来源 \(day.sourceAgents.joined(separator: " + "))")
+            lines.append(AppText.text("Source \(day.sourceAgents.joined(separator: " + "))", "来源 \(day.sourceAgents.joined(separator: " + "))"))
         }
         return lines.joined(separator: "\n")
     }
@@ -955,10 +963,10 @@ enum UsageDisplayFormatter {
     static func resetHint(for date: Date?, timeZone: TimeZone = .current) -> String? {
         guard let date else { return nil }
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.locale = AppText.locale
         formatter.timeZone = timeZone
         formatter.dateFormat = "M/d HH:mm"
-        return "\(formatter.string(from: date)) 重置"
+        return AppText.text("\(formatter.string(from: date)) reset", "\(formatter.string(from: date)) 重置")
     }
 
     static func resetDetail(
@@ -968,7 +976,7 @@ enum UsageDisplayFormatter {
     ) -> String? {
         guard let date, let reset = resetHint(for: date, timeZone: timeZone) else { return nil }
         let remainingMinutes = max(0, Int(date.timeIntervalSince(now) / 60))
-        return "\(reset) | 剩余 \(DurationFormatter.string(for: remainingMinutes))"
+        return AppText.text("\(reset) | \(DurationFormatter.string(for: remainingMinutes)) left", "\(reset) | 剩余 \(DurationFormatter.string(for: remainingMinutes))")
     }
 }
 
@@ -1001,8 +1009,8 @@ enum HeatmapLabelFormatter {
         }
 
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_CN")
-        formatter.dateFormat = "M月"
+        formatter.locale = AppText.locale
+        formatter.dateFormat = AppText.isEnglish ? "MMM" : "M月"
         return formatter.string(from: monthStart)
     }
 
@@ -1360,18 +1368,18 @@ struct PetAvatarView: View {
 enum PetStatusFormatter {
     static func statusLine(for progress: PetProgress) -> String {
         if progress.level >= 15 {
-            return "守护模式在线，正在盯着你的进度"
+            return AppText.text("Guardian mode online, keeping an eye on your progress", "守护模式在线，正在盯着你的进度")
         }
         if progress.todayXP >= 40 {
-            return "兴奋摇尾巴，今天练级很顺"
+            return AppText.text("Tail wagging with hype, today is flowing nicely", "兴奋摇尾巴，今天练级很顺")
         }
         if progress.todayXP >= 15 {
-            return "踩着节奏巡逻中，陪你继续写"
+            return AppText.text("Patrolling in rhythm, keeping you company while you code", "踩着节奏巡逻中，陪你继续写")
         }
         if progress.todayXP > 0 {
-            return "已经醒啦，正在等下一次加经验"
+            return AppText.text("Wide awake now, waiting for the next XP gain", "已经醒啦，正在等下一次加经验")
         }
-        return "打个小盹，等你开始今天的冒险"
+        return AppText.text("Taking a tiny nap until today's adventure begins", "打个小盹，等你开始今天的冒险")
     }
 
     static func indicatorHex(for progress: PetProgress) -> String {
@@ -1533,9 +1541,9 @@ enum PetMilestoneAnimation: Equatable {
     var label: String {
         switch self {
         case .levelUp(let level):
-            "升级到 Lv.\(level)"
+            AppText.text("Level up to Lv.\(level)", "升级到 Lv.\(level)")
         case .evolution(_, let to):
-            "进化成\(to.displayName)"
+            AppText.text("Evolve into \(to.displayName)", "进化成\(to.displayName)")
         }
     }
 
@@ -1607,11 +1615,11 @@ enum PetTapReaction: CaseIterable {
     func label(for stage: PetStage) -> String {
         switch self {
         case .squint:
-            return stage == .cursorEgg ? "蛋壳眨眨" : "眯眼!"
+            return stage == .cursorEgg ? AppText.text("Shell blink", "蛋壳眨眨") : AppText.text("Squint!", "眯眼!")
         case .headTilt:
-            return stage == .notchGuardian ? "侧首注视" : "歪头?"
+            return stage == .notchGuardian ? AppText.text("Guardian glance", "侧首注视") : AppText.text("Head tilt?", "歪头?")
         case .tailFlick:
-            return stage == .terminalCat ? "终端甩尾" : "甩尾!"
+            return stage == .terminalCat ? AppText.text("Terminal tail flick", "终端甩尾") : AppText.text("Tail flick!", "甩尾!")
         }
     }
 }
@@ -1623,9 +1631,9 @@ enum PetEasterEgg: Equatable {
     func label(for stage: PetStage) -> String {
         switch self {
         case .hoverNuzzle:
-            return stage == .cursorEgg ? "轻轻蹭壳" : "蹭蹭你"
+            return stage == .cursorEgg ? AppText.text("Soft shell nuzzle", "轻轻蹭壳") : AppText.text("Nuzzle", "蹭蹭你")
         case .tapOverload:
-            return stage == .mechPatchCat ? "动力过载!" : "开心过载!"
+            return stage == .mechPatchCat ? AppText.text("Power overload!", "动力过载!") : AppText.text("Joy overload!", "开心过载!")
         }
     }
 }
@@ -1655,72 +1663,72 @@ enum PetPreviewFactory {
 enum PetDialogueLibrary {
     static func messages(for progress: PetProgress) -> [String] {
         let common = [
-            "你写代码，我在旁边给你加油。",
-            "今天也一起把 bug 赶跑吧。",
-            "慢一点没关系，我们稳稳推进。",
-            "这段写完就算一次漂亮升级。",
-            "我在盯着进度，你别怕。",
-            "辛苦啦，先把这一小段做好。",
-            "你负责输出，我负责可爱。",
-            "再来一点点，经验条会动的。",
-            "我觉得你马上就要写顺了。",
-            "别急，我陪你一起磨过去。",
-            "这一行改得不错，继续。",
-            "看起来今天状态很能打。",
-            "遇到难题时，先深呼吸一下。",
-            "小猫判断：你完全可以。",
-            "再提交一次，我们就更强了。",
-            "今天也要把灵感攒满。",
-            "先搞定一个点，就是胜利。",
-            "你动手的时候，我就在认真看着。",
-            "把今天的经验都赚回来。",
-            "别担心，我感觉这题有戏。",
+            AppText.text("You code, I cheer from the side.", "你写代码，我在旁边给你加油。"),
+            AppText.text("Let's chase the bugs away today too.", "今天也一起把 bug 赶跑吧。"),
+            AppText.text("It's okay to go slowly. We'll move steadily.", "慢一点没关系，我们稳稳推进。"),
+            AppText.text("Finishing this part counts as a clean upgrade.", "这段写完就算一次漂亮升级。"),
+            AppText.text("I'm watching the progress. You've got this.", "我在盯着进度，你别怕。"),
+            AppText.text("You've worked hard. Let's finish this small piece first.", "辛苦啦，先把这一小段做好。"),
+            AppText.text("You handle the output. I handle the cuteness.", "你负责输出，我负责可爱。"),
+            AppText.text("Just a little more and the XP bar will move.", "再来一点点，经验条会动的。"),
+            AppText.text("I think you're about to hit your flow.", "我觉得你马上就要写顺了。"),
+            AppText.text("No rush. I'll stay with you through it.", "别急，我陪你一起磨过去。"),
+            AppText.text("Nice change on that line. Keep going.", "这一行改得不错，继续。"),
+            AppText.text("You look strong today.", "看起来今天状态很能打。"),
+            AppText.text("When it's hard, start with one deep breath.", "遇到难题时，先深呼吸一下。"),
+            AppText.text("Kitty verdict: you can absolutely do this.", "小猫判断：你完全可以。"),
+            AppText.text("One more commit and we get even stronger.", "再提交一次，我们就更强了。"),
+            AppText.text("Let's fill today's inspiration meter too.", "今天也要把灵感攒满。"),
+            AppText.text("Solve one point first. That's already a win.", "先搞定一个点，就是胜利。"),
+            AppText.text("When you start typing, I'm watching closely.", "你动手的时候，我就在认真看着。"),
+            AppText.text("Let's earn back all of today's XP.", "把今天的经验都赚回来。"),
+            AppText.text("Don't worry. I think this one is winnable.", "别担心，我感觉这题有戏。"),
         ]
 
         let stageSpecific: [String]
         switch progress.stage {
         case .cursorEgg:
             stageSpecific = [
-                "蛋壳里暖暖的，我在等你带我孵化。",
-                "再多一点经验，我就要破壳看看世界了。",
-                "轻轻敲一敲，今天也能长大一点。",
-                "壳里听见键盘声，就会很安心。",
+                AppText.text("It's warm inside the shell. I'm waiting for you to hatch me.", "蛋壳里暖暖的，我在等你带我孵化。"),
+                AppText.text("A little more XP and I'm ready to crack the shell open.", "再多一点经验，我就要破壳看看世界了。"),
+                AppText.text("A gentle tap and I can grow a little today too.", "轻轻敲一敲，今天也能长大一点。"),
+                AppText.text("Hearing the keyboard through the shell feels safe.", "壳里听见键盘声，就会很安心。"),
             ]
         case .pixelKitten:
             stageSpecific = [
-                "像素小爪已经准备好陪跑了。",
-                "今天的 commit 闻起来像成长。",
-                "有我在，你可以再大胆试一次。",
-                "再赚点 XP，我就想冲向下一形态。",
+                AppText.text("Pixel paws are ready to run alongside you.", "像素小爪已经准备好陪跑了。"),
+                AppText.text("Today's commit smells like growth.", "今天的 commit 闻起来像成长。"),
+                AppText.text("With me here, you can try one more bold attempt.", "有我在，你可以再大胆试一次。"),
+                AppText.text("A little more XP and I want to rush toward the next form.", "再赚点 XP，我就想冲向下一形态。"),
             ]
         case .terminalCat:
             stageSpecific = [
-                "终端窗口亮起来，我也跟着精神了。",
-                "这次输出看起来很专业，喵。",
-                "给我一段漂亮日志，我能高兴半天。",
-                "继续敲，我来帮你镇场子。",
+                AppText.text("When the terminal lights up, I perk up too.", "终端窗口亮起来，我也跟着精神了。"),
+                AppText.text("This output looks seriously professional, meow.", "这次输出看起来很专业，喵。"),
+                AppText.text("Give me one beautiful log and I'll be happy for hours.", "给我一段漂亮日志，我能高兴半天。"),
+                AppText.text("Keep typing. I'll hold down the fort.", "继续敲，我来帮你镇场子。"),
             ]
         case .mechPatchCat:
             stageSpecific = [
-                "补丁装填完毕，准备冲刺。",
-                "动力核心已经预热，继续推进。",
-                "今天这股执行力，很机甲。",
-                "修完这个点，我们一起闪闪发光。",
+                AppText.text("Patch loaded. Ready to sprint.", "补丁装填完毕，准备冲刺。"),
+                AppText.text("Power core warmed up. Keep pushing.", "动力核心已经预热，继续推进。"),
+                AppText.text("Today's execution energy feels very mech.", "今天这股执行力，很机甲。"),
+                AppText.text("Fix this point and we'll shine together.", "修完这个点，我们一起闪闪发光。"),
             ]
         case .notchGuardian:
             stageSpecific = [
-                "守护模式已启动，你只管往前写。",
-                "这局面我罩着，你大胆一点。",
-                "现在的你，很像能独当一面的开发者。",
-                "进化到这里了，我们就更不能怂。",
+                AppText.text("Guardian mode engaged. You just keep writing.", "守护模式已启动，你只管往前写。"),
+                AppText.text("I've got this situation covered. Be bold.", "这局面我罩着，你大胆一点。"),
+                AppText.text("Right now, you really look like a developer who can own it.", "现在的你，很像能独当一面的开发者。"),
+                AppText.text("We've evolved this far, so let's not back down now.", "进化到这里了，我们就更不能怂。"),
             ]
         }
 
         if progress.todayXP == 0 {
             return [
-                "我刚醒，等你带我开工。",
-                "今天第一点经验，要不要现在就拿下？",
-                "还没开张呢，我先趴一会儿。",
+                AppText.text("I just woke up. Ready when you are.", "我刚醒，等你带我开工。"),
+                AppText.text("Want to grab today's first XP right now?", "今天第一点经验，要不要现在就拿下？"),
+                AppText.text("Nothing started yet, so I'll loaf for a moment.", "还没开张呢，我先趴一会儿。"),
             ] + stageSpecific + common
         }
         return stageSpecific + common
@@ -1747,8 +1755,8 @@ struct YearContributionHeatmap: View {
 
     private static let tooltipDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_CN")
-        formatter.dateFormat = "yyyy年M月d日"
+        formatter.locale = AppText.locale
+        formatter.dateFormat = AppText.isEnglish ? "MMM d, yyyy" : "yyyy年M月d日"
         return formatter
     }()
 
@@ -1858,7 +1866,9 @@ struct YearContributionHeatmap: View {
     }
 
     private func weekdayLabel(for row: Int) -> String {
-        ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][row]
+        AppText.isEnglish
+            ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][row]
+            : ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][row]
     }
 
     private func monthLabel(for index: Int) -> String {
@@ -1883,8 +1893,8 @@ struct MonthCalendarHeatmap: View {
 
     private static let tooltipDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_CN")
-        formatter.dateFormat = "yyyy年M月d日"
+        formatter.locale = AppText.locale
+        formatter.dateFormat = AppText.isEnglish ? "MMM d, yyyy" : "yyyy年M月d日"
         return formatter
     }()
 
@@ -1993,8 +2003,8 @@ struct MonthCalendarHeatmap: View {
 
     private var monthTitle: String {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_CN")
-        formatter.dateFormat = "M月"
+        formatter.locale = AppText.locale
+        formatter.dateFormat = AppText.isEnglish ? "MMM" : "M月"
         return formatter.string(from: displayedMonth)
     }
 
@@ -2022,8 +2032,8 @@ struct WeekStripHeatmap: View {
 
     private static let tooltipDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_CN")
-        formatter.dateFormat = "yyyy年M月d日"
+        formatter.locale = AppText.locale
+        formatter.dateFormat = AppText.isEnglish ? "MMM d, yyyy" : "yyyy年M月d日"
         return formatter
     }()
 
@@ -2084,7 +2094,7 @@ struct WeekStripHeatmap: View {
         let weekdayIndex = calendar.component(.weekday, from: date)
         let weekday = calendar.shortStandaloneWeekdaySymbols[(weekdayIndex - 1) % calendar.shortStandaloneWeekdaySymbols.count]
         let day = calendar.component(.day, from: date)
-        return "\(day)日 \(weekday)"
+        return AppText.text("\(weekday) \(day)", "\(day)日 \(weekday)")
     }
 
     private func updateHover(for day: UsageMetricsDay, frame: CGRect, isHovered: Bool) {
@@ -2122,11 +2132,11 @@ enum HeatmapRange: String, CaseIterable, Identifiable, Codable, CustomStringConv
     var title: String {
         switch self {
         case .year:
-            "最近一年"
+            AppText.text("Last Year", "最近一年")
         case .month:
-            "最近一月"
+            AppText.text("Last Month", "最近一月")
         case .week:
-            "最近一周"
+            AppText.text("Last Week", "最近一周")
         }
     }
 
@@ -2214,7 +2224,7 @@ private struct SettingsCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Text("设置")
+                Text(AppText.text("Settings", "设置"))
                     .font(.system(size: 13, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
 
@@ -2231,7 +2241,16 @@ private struct SettingsCardView: View {
             }
 
             settingPickerRow(
-                title: "默认展示 Agent",
+                title: AppText.text("Language", "语言"),
+                options: AppLanguage.allCases,
+                selection: Binding(
+                    get: { settings.language },
+                    set: { settingsStore.updateLanguage($0) }
+                )
+            )
+
+            settingPickerRow(
+                title: AppText.text("Default Agent", "默认展示 Agent"),
                 options: availableDefaultAgentOptions,
                 selection: Binding(
                     get: { settings.defaultAgent },
@@ -2240,7 +2259,7 @@ private struct SettingsCardView: View {
             )
 
             settingPickerRow(
-                title: "默认热力图范围",
+                title: AppText.text("Default Heatmap Range", "默认热力图范围"),
                 options: HeatmapRange.allCases,
                 selection: Binding(
                     get: { settings.defaultHeatmapRange },
@@ -2249,7 +2268,7 @@ private struct SettingsCardView: View {
             )
 
             settingPickerRow(
-                title: "刷新频率",
+                title: AppText.text("Refresh Frequency", "刷新频率"),
                 options: RefreshIntervalOption.allCases,
                 selection: Binding(
                     get: { settings.refreshInterval },
@@ -2262,10 +2281,10 @@ private struct SettingsCardView: View {
                 set: { settingsStore.updateShowsHotspot($0) }
             )) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("显示顶部热点")
+                    Text(AppText.text("Show Top Hotspot", "显示顶部热点"))
                         .font(.system(size: 11, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white.opacity(0.9))
-                    Text("关闭后仅从菜单栏图标展开面板")
+                    Text(AppText.text("When off, open the panel only from the menu bar icon", "关闭后仅从菜单栏图标展开面板"))
                         .font(.system(size: 10, weight: .medium, design: .rounded))
                         .foregroundStyle(.white.opacity(0.48))
                 }
@@ -2273,7 +2292,7 @@ private struct SettingsCardView: View {
             .toggleStyle(.switch)
 
             VStack(alignment: .leading, spacing: 8) {
-                sectionTitle("主题色")
+                sectionTitle(AppText.text("Theme Tint", "主题色"))
                 swatchRow(
                     selections: ThemeTintPreset.allCases,
                     currentValue: settings.themeTint,
@@ -2283,7 +2302,7 @@ private struct SettingsCardView: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                sectionTitle("热力图颜色")
+                sectionTitle(AppText.text("Heatmap Color", "热力图颜色"))
                 swatchRow(
                     selections: HeatmapColorPreset.allCases,
                     currentValue: settings.heatmapColor,
@@ -2824,9 +2843,9 @@ struct PetDeveloperPreviewMenu: ViewModifier {
 
     func body(content: Content) -> some View {
         content.contextMenu {
-            Text("预览宠物形态")
+            Text(AppText.text("Preview Pet Form", "预览宠物形态"))
             ForEach(PetPreviewFactory.previewLevels, id: \.self) { level in
-                Button("预览 Lv.\(level)") {
+                Button(AppText.text("Preview Lv.\(level)", "预览 Lv.\(level)")) {
                     let next = PetPreviewFactory.progress(for: level, todayXP: progress.todayXP)
                     let previous = petPreviewProgress ?? progress
                     petPreviewProgress = next
@@ -2835,7 +2854,7 @@ struct PetDeveloperPreviewMenu: ViewModifier {
                     petDialogueTick += 1
                 }
             }
-            Button("恢复真实进度") {
+            Button(AppText.text("Restore Live Progress", "恢复真实进度")) {
                 petPreviewProgress = nil
                 petPreviewMilestones = []
                 petPreviewSequence += 1

@@ -3,6 +3,7 @@ import Foundation
 import SwiftUI
 
 struct AppSettings: Codable, Equatable, Sendable {
+    var language: AppLanguage
     var defaultAgent: DefaultAgentPreference
     var defaultHeatmapRange: HeatmapRange
     var refreshInterval: RefreshIntervalOption
@@ -10,7 +11,18 @@ struct AppSettings: Codable, Equatable, Sendable {
     var themeTint: ThemeTintPreset
     var heatmapColor: HeatmapColorPreset
 
+    private enum CodingKeys: String, CodingKey {
+        case language
+        case defaultAgent
+        case defaultHeatmapRange
+        case refreshInterval
+        case showsHotspot
+        case themeTint
+        case heatmapColor
+    }
+
     init(
+        language: AppLanguage = .english,
         defaultAgent: DefaultAgentPreference = .all,
         defaultHeatmapRange: HeatmapRange = .year,
         refreshInterval: RefreshIntervalOption = .oneMinute,
@@ -18,12 +30,24 @@ struct AppSettings: Codable, Equatable, Sendable {
         themeTint: ThemeTintPreset = .deepBlue,
         heatmapColor: HeatmapColorPreset = .emerald
     ) {
+        self.language = language
         self.defaultAgent = defaultAgent
         self.defaultHeatmapRange = defaultHeatmapRange
         self.refreshInterval = refreshInterval
         self.showsHotspot = showsHotspot
         self.themeTint = themeTint
         self.heatmapColor = heatmapColor
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        language = try container.decodeIfPresent(AppLanguage.self, forKey: .language) ?? .english
+        defaultAgent = try container.decodeIfPresent(DefaultAgentPreference.self, forKey: .defaultAgent) ?? .all
+        defaultHeatmapRange = try container.decodeIfPresent(HeatmapRange.self, forKey: .defaultHeatmapRange) ?? .year
+        refreshInterval = try container.decodeIfPresent(RefreshIntervalOption.self, forKey: .refreshInterval) ?? .oneMinute
+        showsHotspot = try container.decodeIfPresent(Bool.self, forKey: .showsHotspot) ?? true
+        themeTint = try container.decodeIfPresent(ThemeTintPreset.self, forKey: .themeTint) ?? .deepBlue
+        heatmapColor = try container.decodeIfPresent(HeatmapColorPreset.self, forKey: .heatmapColor) ?? .emerald
     }
 }
 
@@ -39,7 +63,7 @@ enum DefaultAgentPreference: String, CaseIterable, Codable, Identifiable, Sendab
     var title: String {
         switch self {
         case .all:
-            "全部"
+            AppText.text("All", "全部")
         case .codex:
             "Codex"
         case .claude:
@@ -47,7 +71,7 @@ enum DefaultAgentPreference: String, CaseIterable, Codable, Identifiable, Sendab
         case .gemini:
             "Gemini"
         case .followRecent:
-            "跟随最近活跃"
+            AppText.text("Follow Recent Activity", "跟随最近活跃")
         }
     }
 
@@ -95,13 +119,13 @@ enum RefreshIntervalOption: String, CaseIterable, Codable, Identifiable, Sendabl
     var title: String {
         switch self {
         case .thirtySeconds:
-            "30 秒"
+            AppText.text("30 sec", "30 秒")
         case .oneMinute:
-            "1 分钟"
+            AppText.text("1 min", "1 分钟")
         case .fiveMinutes:
-            "5 分钟"
+            AppText.text("5 min", "5 分钟")
         case .panelOpenOnly:
-            "仅打开面板时"
+            AppText.text("Only When Panel Opens", "仅打开面板时")
         }
     }
 
@@ -133,15 +157,15 @@ enum ThemeTintPreset: String, CaseIterable, Codable, Identifiable, Sendable {
     var title: String {
         switch self {
         case .classicDeepBlue:
-            "经典深蓝"
+            AppText.text("Classic Deep Blue", "经典深蓝")
         case .deepBlue:
-            "深蓝"
+            AppText.text("Deep Blue", "深蓝")
         case .slate:
-            "岩灰"
+            AppText.text("Slate", "岩灰")
         case .cyanSky:
-            "晴空"
+            AppText.text("Sky Cyan", "晴空")
         case .iceMint:
-            "冰青"
+            AppText.text("Ice Mint", "冰青")
         }
     }
 
@@ -189,17 +213,17 @@ enum HeatmapColorPreset: String, CaseIterable, Codable, Identifiable, Sendable {
     var title: String {
         switch self {
         case .emerald:
-            "翠绿"
+            AppText.text("Emerald", "翠绿")
         case .aqua:
-            "青蓝"
+            AppText.text("Aqua", "青蓝")
         case .sky:
-            "天蓝"
+            AppText.text("Sky", "天蓝")
         case .lemon:
-            "柠黄"
+            AppText.text("Lemon", "柠黄")
         case .rose:
-            "玫红"
+            AppText.text("Rose", "玫红")
         case .coral:
-            "珊瑚"
+            AppText.text("Coral", "珊瑚")
         }
     }
 
@@ -252,6 +276,11 @@ final class AppSettingsStore: ObservableObject {
         } else {
             settings = AppSettings()
         }
+        AppText.setLanguage(settings.language)
+    }
+
+    func updateLanguage(_ value: AppLanguage) {
+        update { $0.language = value }
     }
 
     func updateDefaultAgent(_ value: DefaultAgentPreference) {
@@ -286,6 +315,7 @@ final class AppSettingsStore: ObservableObject {
         var next = settings
         mutate(&next)
         settings = next
+        AppText.setLanguage(next.language)
         save()
     }
 

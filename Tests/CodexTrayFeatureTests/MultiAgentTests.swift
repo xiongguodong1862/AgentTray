@@ -115,9 +115,9 @@ final class MultiAgentTests: XCTestCase {
         XCTAssertEqual(snapshot.today.dialogs, 1)
         XCTAssertEqual(snapshot.today.tokenUsage, 14_272)
         XCTAssertEqual(snapshot.today.toolCalls, 0)
-        XCTAssertEqual(snapshot.status.primaryLabel, "今日 Token")
+        XCTAssertEqual(snapshot.status.primaryLabel, "Today Tokens")
         XCTAssertEqual(snapshot.status.primaryValue, "14.3K")
-        XCTAssertEqual(snapshot.status.secondaryLabel, "累计 Token")
+        XCTAssertEqual(snapshot.status.secondaryLabel, "Total Tokens")
         XCTAssertEqual(snapshot.status.secondaryValue, "14.3K")
     }
 
@@ -193,9 +193,9 @@ final class MultiAgentTests: XCTestCase {
         XCTAssertEqual(snapshot.today.dialogs, 1)
         XCTAssertEqual(snapshot.today.tokenUsage, 1_500)
         XCTAssertEqual(snapshot.today.toolCalls, 1)
-        XCTAssertEqual(snapshot.status.primaryLabel, "今日 Token")
+        XCTAssertEqual(snapshot.status.primaryLabel, "Today Tokens")
         XCTAssertEqual(snapshot.status.primaryValue, "1.5K")
-        XCTAssertEqual(snapshot.status.secondaryLabel, "累计 Token")
+        XCTAssertEqual(snapshot.status.secondaryLabel, "Total Tokens")
         XCTAssertEqual(snapshot.status.secondaryValue, "1.5K")
         XCTAssertEqual(snapshot.environment.authLabel, "oauth-personal")
     }
@@ -231,9 +231,9 @@ final class MultiAgentTests: XCTestCase {
         XCTAssertEqual(snapshot.today.dialogs, 2)
         XCTAssertEqual(snapshot.today.tokenUsage, 2_500)
         XCTAssertEqual(snapshot.today.toolCalls, 2)
-        XCTAssertEqual(snapshot.status.primaryLabel, "今日 Token")
+        XCTAssertEqual(snapshot.status.primaryLabel, "Today Tokens")
         XCTAssertEqual(snapshot.status.primaryValue, "2.5K")
-        XCTAssertEqual(snapshot.status.secondaryLabel, "累计 Token")
+        XCTAssertEqual(snapshot.status.secondaryLabel, "Total Tokens")
         XCTAssertEqual(snapshot.status.secondaryValue, "2.5K")
     }
 

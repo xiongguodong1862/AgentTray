@@ -169,7 +169,7 @@ struct ActivityHeatmapRangeMenu: View {
     @Binding var selectedRange: HeatmapRange
 
     var body: some View {
-        Picker("活跃范围", selection: $selectedRange) {
+        Picker(AppText.text("Activity Range", "活跃范围"), selection: $selectedRange) {
             ForEach([HeatmapRange.week, .month, .year]) { range in
                 Text(range.title).tag(range)
             }
@@ -333,7 +333,7 @@ struct DistributionDonutChartView: View {
 
     var body: some View {
         if items.isEmpty {
-            AnalyticsEmptyStateCard(title: "暂无分布数据", description: "当前范围内还没有可展示的分布结果。")
+            AnalyticsEmptyStateCard(title: AppText.text("No distribution data", "暂无分布数据"), description: AppText.text("There isn't any distribution data to show for this range yet.", "当前范围内还没有可展示的分布结果。"))
         } else {
             VStack(alignment: .leading, spacing: 10) {
                 AnalyticsLegendRow(items: items.prefix(4).map { (AnalyticsChartPalette.color(for: $0.name), "\($0.name) \(Int($0.ratio * 100))%") })
@@ -365,7 +365,7 @@ struct TimeBarChartView: View {
 
     var body: some View {
         if series.allSatisfy({ $0.value == 0 }) {
-            AnalyticsEmptyStateCard(title: "暂无趋势数据", description: "当前范围内还没有可展示的趋势变化。")
+            AnalyticsEmptyStateCard(title: AppText.text("No trend data", "暂无趋势数据"), description: AppText.text("There isn't any trend data to show for this range yet.", "当前范围内还没有可展示的趋势变化。"))
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 AnalyticsLegendRow(items: [(color, valueLabel)])
@@ -438,7 +438,7 @@ struct ComboTrendChartView: View {
 
     var body: some View {
         if bars.allSatisfy({ $0.value == 0 }) && line.allSatisfy({ $0.value == 0 }) {
-            AnalyticsEmptyStateCard(title: "暂无组合趋势", description: "当前范围内还没有可展示的图表数据。")
+            AnalyticsEmptyStateCard(title: AppText.text("No combined trend", "暂无组合趋势"), description: AppText.text("There isn't any chart data to show for this range yet.", "当前范围内还没有可展示的图表数据。"))
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 AnalyticsLegendRow(items: [(barColor, barLabel), (lineColor, lineLabel)])
@@ -524,7 +524,7 @@ struct VerticalRankingChartView: View {
 
     var body: some View {
         if items.isEmpty {
-            AnalyticsEmptyStateCard(title: "暂无工具排行", description: "当前范围内还没有工具调用记录。")
+            AnalyticsEmptyStateCard(title: AppText.text("No tool ranking", "暂无工具排行"), description: AppText.text("There aren't any tool call records in this range yet.", "当前范围内还没有工具调用记录。"))
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 AnalyticsLegendRow(items: [(color, valueLabel)])
@@ -570,7 +570,7 @@ struct VerticalRankingChartView: View {
                         if let hoveredItem,
                            let x = proxy.position(forX: hoveredItem.name),
                            let y = proxy.position(forY: hoveredItem.count) {
-                            AnalyticsChartTooltip(text: "\(hoveredItem.name)\n\(valueLabel) \(hoveredItem.count)\n占比 \(Int(hoveredItem.ratio * 100))%")
+                            AnalyticsChartTooltip(text: AppText.text("\(hoveredItem.name)\n\(valueLabel) \(hoveredItem.count)\nShare \(Int(hoveredItem.ratio * 100))%", "\(hoveredItem.name)\n\(valueLabel) \(hoveredItem.count)\n占比 \(Int(hoveredItem.ratio * 100))%"))
                                 .position(x: min(max(x, 92), geometry.size.width - 92), y: max(y - 26, 20))
                                 .allowsHitTesting(false)
                         }
@@ -604,7 +604,7 @@ struct DualLineChartView: View {
 
     var body: some View {
         if primary.isEmpty && secondary.isEmpty {
-            AnalyticsEmptyStateCard(title: "暂无配额采样", description: "当前范围内还没有配额曲线数据。")
+            AnalyticsEmptyStateCard(title: AppText.text("No limit samples", "暂无配额采样"), description: AppText.text("There isn't any limit curve data to show for this range yet.", "当前范围内还没有配额曲线数据。"))
         } else {
             let primarySorted = primary.sorted { $0.timestamp < $1.timestamp }
             let secondarySorted = secondary.sorted { $0.timestamp < $1.timestamp }
@@ -694,7 +694,7 @@ struct ActivityTrendPageView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            AnalyticsCard(title: "\(agent.displayName) 活跃趋势", subtitle: range.title) {
+            AnalyticsCard(title: AppText.text("\(agent.displayName) Activity", "\(agent.displayName) 活跃趋势"), subtitle: range.title) {
                 VStack(alignment: .leading, spacing: 14) {
                     heatmapContent
                     HeatmapLegend(colorPreset: colorPreset)
@@ -703,9 +703,9 @@ struct ActivityTrendPageView: View {
             }
 
             AnalyticsSummaryStrip(items: [
-                ("今日活跃时长", DurationFormatter.string(for: snapshot.today.activeMinutes)),
-                ("本周活跃天数", "\(snapshot.lastSevenDays.filter { $0.activityScore > 0 }.count)"),
-                ("本月活跃天数", "\(Array(snapshot.lastYearDays.suffix(30)).filter { $0.activityScore > 0 }.count)")
+                (AppText.text("Active Time Today", "今日活跃时长"), DurationFormatter.string(for: snapshot.today.activeMinutes)),
+                (AppText.text("Active Days This Week", "本周活跃天数"), "\(snapshot.lastSevenDays.filter { $0.activityScore > 0 }.count)"),
+                (AppText.text("Active Days This Month", "本月活跃天数"), "\(Array(snapshot.lastYearDays.suffix(30)).filter { $0.activityScore > 0 }.count)")
             ])
         }
     }
@@ -730,18 +730,18 @@ struct SessionTrendPageView: View {
     var body: some View {
         let stats = analytics.sessionStats(for: range)
         VStack(alignment: .leading, spacing: 12) {
-            AnalyticsCard(title: "会话数", subtitle: range.title) {
+            AnalyticsCard(title: AppText.text("Sessions", "会话数"), subtitle: range.title) {
                 TimeBarChartView(
                     series: stats.series,
-                    valueLabel: "会话数",
+                    valueLabel: AppText.text("Sessions", "会话数"),
                     color: Color(hex: "#79D0FF")
                 )
             }
 
             AnalyticsSummaryStrip(items: [
-                ("会话总数", "\(stats.totalSessions)"),
-                ("平均每次会话轮数", AnalyticsTextFormatter.decimal(stats.averageTurnsPerSession)),
-                ("活跃天数", "\(stats.activeDays)")
+                (AppText.text("Total Sessions", "会话总数"), "\(stats.totalSessions)"),
+                (AppText.text("Avg Turns / Session", "平均每次会话轮数"), AnalyticsTextFormatter.decimal(stats.averageTurnsPerSession)),
+                (AppText.text("Active Days", "活跃天数"), "\(stats.activeDays)")
             ])
         }
     }
@@ -756,12 +756,12 @@ struct TokenTrendPageView: View {
         let stats = analytics.tokenStats(for: range)
         let donutItems = tokenDistributionItems(stats: stats)
         VStack(alignment: .leading, spacing: 12) {
-            AnalyticsCard(title: "Token 趋势", subtitle: range.title) {
+            AnalyticsCard(title: AppText.text("Token Trend", "Token 趋势"), subtitle: range.title) {
                 ComboTrendChartView(
                     bars: stats.series,
                     line: stats.cumulativeSeries,
-                    barLabel: "时段 Token 用量",
-                    lineLabel: "累计 Token 用量",
+                    barLabel: AppText.text("Period Tokens", "时段 Token 用量"),
+                    lineLabel: AppText.text("Cumulative Tokens", "累计 Token 用量"),
                     barColor: Color(hex: "#7DE6AA"),
                     lineColor: Color(hex: "#FFD36E"),
                     valueFormatter: UsageNumberFormatter.tokenCompactCount
@@ -769,16 +769,16 @@ struct TokenTrendPageView: View {
             }
 
             HStack(alignment: .top, spacing: 12) {
-                AnalyticsCard(title: "Token 分布") {
+                AnalyticsCard(title: AppText.text("Token Distribution", "Token 分布")) {
                     DistributionDonutChartView(items: donutItems)
                 }
                 .frame(maxWidth: .infinity)
 
-                AnalyticsCard(title: "辅助信息") {
+                AnalyticsCard(title: AppText.text("Details", "辅助信息")) {
                     AnalyticsMetricList(items: [
-                        ("总 Token", UsageNumberFormatter.tokenCompactCount(stats.totalTokens)),
-                        ("平均每会话 Token", UsageNumberFormatter.tokenCompactCount(Int(stats.averageTokensPerSession.rounded()))),
-                        (agent == .gemini ? "输入/输出占比" : "输入/输出/推理占比", tokenRatioText(stats: stats))
+                        (AppText.text("Total Tokens", "总 Token"), UsageNumberFormatter.tokenCompactCount(stats.totalTokens)),
+                        (AppText.text("Avg Tokens / Session", "平均每会话 Token"), UsageNumberFormatter.tokenCompactCount(Int(stats.averageTokensPerSession.rounded()))),
+                        (agent == .gemini ? AppText.text("Input / Output Ratio", "输入/输出占比") : AppText.text("Input / Output / Reasoning Ratio", "输入/输出/推理占比"), tokenRatioText(stats: stats))
                     ])
                 }
                 .frame(maxWidth: .infinity)
@@ -790,13 +790,13 @@ struct TokenTrendPageView: View {
         var items: [NamedCountItem] = []
         let total = max(1, stats.inputTokens + stats.outputTokens + stats.reasoningTokens)
         if stats.inputTokens > 0 {
-            items.append(NamedCountItem(name: "输入", count: stats.inputTokens, ratio: Double(stats.inputTokens) / Double(total)))
+            items.append(NamedCountItem(name: AppText.text("Input", "输入"), count: stats.inputTokens, ratio: Double(stats.inputTokens) / Double(total)))
         }
         if stats.outputTokens > 0 {
-            items.append(NamedCountItem(name: "输出", count: stats.outputTokens, ratio: Double(stats.outputTokens) / Double(total)))
+            items.append(NamedCountItem(name: AppText.text("Output", "输出"), count: stats.outputTokens, ratio: Double(stats.outputTokens) / Double(total)))
         }
         if stats.reasoningTokens > 0 {
-            items.append(NamedCountItem(name: "推理", count: stats.reasoningTokens, ratio: Double(stats.reasoningTokens) / Double(total)))
+            items.append(NamedCountItem(name: AppText.text("Reasoning", "推理"), count: stats.reasoningTokens, ratio: Double(stats.reasoningTokens) / Double(total)))
         }
         return items
     }
@@ -804,9 +804,9 @@ struct TokenTrendPageView: View {
     private func tokenRatioText(stats: TokenStatsSnapshot) -> String {
         let total = max(1, stats.inputTokens + stats.outputTokens + stats.reasoningTokens)
         let parts = [
-            stats.inputTokens > 0 ? "入 \(Int((Double(stats.inputTokens) / Double(total)) * 100))%" : nil,
-            stats.outputTokens > 0 ? "出 \(Int((Double(stats.outputTokens) / Double(total)) * 100))%" : nil,
-            stats.reasoningTokens > 0 ? "推 \(Int((Double(stats.reasoningTokens) / Double(total)) * 100))%" : nil,
+            stats.inputTokens > 0 ? AppText.text("In \(Int((Double(stats.inputTokens) / Double(total)) * 100))%", "入 \(Int((Double(stats.inputTokens) / Double(total)) * 100))%") : nil,
+            stats.outputTokens > 0 ? AppText.text("Out \(Int((Double(stats.outputTokens) / Double(total)) * 100))%", "出 \(Int((Double(stats.outputTokens) / Double(total)) * 100))%") : nil,
+            stats.reasoningTokens > 0 ? AppText.text("Reason \(Int((Double(stats.reasoningTokens) / Double(total)) * 100))%", "推 \(Int((Double(stats.reasoningTokens) / Double(total)) * 100))%") : nil,
         ].compactMap { $0 }
         return parts.isEmpty ? "--" : parts.joined(separator: " / ")
     }
@@ -821,30 +821,30 @@ struct ToolRankingPageView: View {
         let stats = analytics.toolStats(for: range) ?? .empty
         let searchTotal = max(1, stats.searchSessionCount + stats.nonSearchSessionCount)
         let donutItems = [
-            NamedCountItem(name: "搜索任务", count: stats.searchSessionCount, ratio: Double(stats.searchSessionCount) / Double(searchTotal)),
-            NamedCountItem(name: "非搜索任务", count: stats.nonSearchSessionCount, ratio: Double(stats.nonSearchSessionCount) / Double(searchTotal))
+            NamedCountItem(name: AppText.text("Search Sessions", "搜索任务"), count: stats.searchSessionCount, ratio: Double(stats.searchSessionCount) / Double(searchTotal)),
+            NamedCountItem(name: AppText.text("Non-search Sessions", "非搜索任务"), count: stats.nonSearchSessionCount, ratio: Double(stats.nonSearchSessionCount) / Double(searchTotal))
         ].filter { $0.count > 0 }
 
         VStack(alignment: .leading, spacing: 12) {
-            AnalyticsCard(title: "高频工具 Top 6", subtitle: range.title) {
+            AnalyticsCard(title: AppText.text("Top 6 Tools", "高频工具 Top 6"), subtitle: range.title) {
                 VerticalRankingChartView(
                     items: stats.topTools,
-                    valueLabel: "调用次数",
+                    valueLabel: AppText.text("Calls", "调用次数"),
                     color: Color(hex: agent == .claude ? "#8AB5FF" : "#79D0FF")
                 )
             }
 
             HStack(alignment: .top, spacing: 12) {
-                AnalyticsCard(title: "搜索占比") {
+                AnalyticsCard(title: AppText.text("Search Ratio", "搜索占比")) {
                     DistributionDonutChartView(items: donutItems)
                 }
                 .frame(maxWidth: .infinity)
 
-                AnalyticsCard(title: "辅助信息") {
+                AnalyticsCard(title: AppText.text("Details", "辅助信息")) {
                     AnalyticsMetricList(items: [
-                        ("工具调用总次数", "\(stats.totalToolCalls)"),
-                        ("工具种类数", "\(stats.distinctToolCount)"),
-                        ("搜索任务占比", searchRatioText(stats: stats))
+                        (AppText.text("Total Tool Calls", "工具调用总次数"), "\(stats.totalToolCalls)"),
+                        (AppText.text("Tool Types", "工具种类数"), "\(stats.distinctToolCount)"),
+                        (AppText.text("Search Session Ratio", "搜索任务占比"), searchRatioText(stats: stats))
                     ])
                 }
                 .frame(maxWidth: .infinity)
@@ -868,27 +868,27 @@ struct CodeChangeTrendPageView: View {
         let stats = analytics.changeStats(for: range) ?? .empty
         let bucketLabelStyle = AnalyticsDateFormatter.labelStyle(for: stats.addedSeries.map(\.bucketStart))
         VStack(alignment: .leading, spacing: 12) {
-            AnalyticsCard(title: "代码变更", subtitle: range.title) {
+            AnalyticsCard(title: AppText.text("Code Changes", "代码变更"), subtitle: range.title) {
                 VStack(alignment: .leading, spacing: 8) {
                     AnalyticsLegendRow(items: [
-                        (Color(hex: "#7DE6AA"), "新增代码行"),
-                        (Color(hex: "#FF9A8A"), "删除代码行"),
-                        (Color(hex: "#7AD6FF"), "净增代码行")
+                        (Color(hex: "#7DE6AA"), AppText.text("Added Lines", "新增代码行")),
+                        (Color(hex: "#FF9A8A"), AppText.text("Deleted Lines", "删除代码行")),
+                        (Color(hex: "#7AD6FF"), AppText.text("Net Lines", "净增代码行"))
                     ])
                     Chart {
                         ForEach(stats.addedSeries) { point in
-                            BarMark(x: .value("Time", point.bucketStart), y: .value("新增", point.value))
+                            BarMark(x: .value("Time", point.bucketStart), y: .value(AppText.text("Added", "新增"), point.value))
                                 .foregroundStyle(Color(hex: "#7DE6AA"))
                         }
                         ForEach(stats.deletedSeries) { point in
-                            BarMark(x: .value("Time", point.bucketStart), y: .value("删除", point.value))
+                            BarMark(x: .value("Time", point.bucketStart), y: .value(AppText.text("Deleted", "删除"), point.value))
                                 .foregroundStyle(Color(hex: "#FF9A8A"))
                         }
                         ForEach(stats.netSeries) { point in
                             LineMark(
                                 x: .value("Time", point.bucketStart),
-                                y: .value("净增", point.value),
-                                series: .value("Series", "净增")
+                                y: .value(AppText.text("Net", "净增"), point.value),
+                                series: .value("Series", AppText.text("Net", "净增"))
                             )
                                 .foregroundStyle(Color(hex: "#7AD6FF"))
                                 .lineStyle(.init(lineWidth: 2))
@@ -916,7 +916,10 @@ struct CodeChangeTrendPageView: View {
                                 let deleted = stats.deletedSeries.first(where: { $0.bucketStart == hoveredPoint.bucketStart })?.value ?? 0
                                 let net = stats.netSeries.first(where: { $0.bucketStart == hoveredPoint.bucketStart })?.value ?? 0
                                 AnalyticsChartTooltip(
-                                    text: "\(AnalyticsDateFormatter.bucketLabel(for: hoveredPoint.bucketStart, style: bucketLabelStyle))\n新增 \(hoveredPoint.value)\n删除 \(deleted)\n净增 \(net)"
+                                    text: AppText.text(
+                                        "\(AnalyticsDateFormatter.bucketLabel(for: hoveredPoint.bucketStart, style: bucketLabelStyle))\nAdded \(hoveredPoint.value)\nDeleted \(deleted)\nNet \(net)",
+                                        "\(AnalyticsDateFormatter.bucketLabel(for: hoveredPoint.bucketStart, style: bucketLabelStyle))\n新增 \(hoveredPoint.value)\n删除 \(deleted)\n净增 \(net)"
+                                    )
                                 )
                                 .position(x: min(max(x, 92), geometry.size.width - 92), y: max(y - 26, 20))
                                 .allowsHitTesting(false)
@@ -928,10 +931,10 @@ struct CodeChangeTrendPageView: View {
             }
 
             AnalyticsSummaryStrip(items: [
-                ("新增总行数", "\(stats.totalAddedLines)"),
-                ("删除总行数", "\(stats.totalDeletedLines)"),
-                ("净增总行数", "\(stats.totalNetLines)"),
-                ("改动文件数", "\(stats.modifiedFiles)")
+                (AppText.text("Total Added Lines", "新增总行数"), "\(stats.totalAddedLines)"),
+                (AppText.text("Total Deleted Lines", "删除总行数"), "\(stats.totalDeletedLines)"),
+                (AppText.text("Total Net Lines", "净增总行数"), "\(stats.totalNetLines)"),
+                (AppText.text("Modified Files", "改动文件数"), "\(stats.modifiedFiles)")
             ])
         }
     }
@@ -961,12 +964,12 @@ struct LimitTrendPageView: View {
             TimedPercentPoint(timestamp: $0.timestamp, percent: max(0, 100 - $0.percent))
         }
         VStack(alignment: .leading, spacing: 12) {
-            AnalyticsCard(title: "配额曲线", subtitle: range.title) {
+            AnalyticsCard(title: AppText.text("Limit Curve", "配额曲线"), subtitle: range.title) {
                 DualLineChartView(
                     primary: primaryRemaining,
                     secondary: secondaryRemaining,
-                    primaryLabel: "5 小时窗口剩余",
-                    secondaryLabel: "周窗口剩余",
+                    primaryLabel: AppText.text("5h Window Left", "5 小时窗口剩余"),
+                    secondaryLabel: AppText.text("Week Window Left", "周窗口剩余"),
                     primaryColor: Color(hex: "#FFB86B"),
                     secondaryColor: Color(hex: "#7AD6FF")
                 )
@@ -982,15 +985,15 @@ struct ModelDistributionPageView: View {
     var body: some View {
         let stats = analytics.modelStats(for: range) ?? .empty
         VStack(alignment: .leading, spacing: 12) {
-            AnalyticsCard(title: "模型使用分布", subtitle: range.title) {
+            AnalyticsCard(title: AppText.text("Model Distribution", "模型使用分布"), subtitle: range.title) {
                 DistributionDonutChartView(items: stats.modelUsageItems)
             }
 
-            AnalyticsCard(title: "辅助信息") {
+            AnalyticsCard(title: AppText.text("Details", "辅助信息")) {
                 AnalyticsSummaryStrip(items: [
-                    ("主用模型", stats.dominantModelName ?? "--"),
-                    ("模型种类数", "\(stats.modelUsageItems.count)"),
-                    ("平均 Token 消耗", modelAverageText(stats.modelAverageTokenItems))
+                    (AppText.text("Primary Model", "主用模型"), stats.dominantModelName ?? "--"),
+                    (AppText.text("Model Count", "模型种类数"), "\(stats.modelUsageItems.count)"),
+                    (AppText.text("Average Token Cost", "平均 Token 消耗"), modelAverageText(stats.modelAverageTokenItems))
                 ])
             }
         }
@@ -1011,9 +1014,9 @@ struct ProjectTokenTrendPageView: View {
         let stats = analytics.projectStats(for: range) ?? .empty
         let bucketLabelStyle = AnalyticsDateFormatter.labelStyle(for: stats.topProjects.first?.points.map(\.bucketStart) ?? [])
         VStack(alignment: .leading, spacing: 12) {
-            AnalyticsCard(title: "项目 Token 趋势", subtitle: range.title) {
+            AnalyticsCard(title: AppText.text("Project Token Trend", "项目 Token 趋势"), subtitle: range.title) {
                 if stats.topProjects.isEmpty {
-                    AnalyticsEmptyStateCard(title: "暂无项目趋势", description: "当前范围内还没有项目级 Token 数据。")
+                    AnalyticsEmptyStateCard(title: AppText.text("No project trend", "暂无项目趋势"), description: AppText.text("There isn't any project-level token data to show for this range yet.", "当前范围内还没有项目级 Token 数据。"))
                 } else {
                     VStack(alignment: .leading, spacing: 8) {
                         AnalyticsLegendRow(items: stats.topProjects.prefix(3).map { (AnalyticsChartPalette.color(for: $0.projectName), $0.projectName) })
@@ -1066,9 +1069,9 @@ struct ProjectTokenTrendPageView: View {
             }
 
             AnalyticsSummaryStrip(items: [
-                ("项目数", "\(stats.projectCount)"),
-                ("Token 最高项目", stats.highestTokenProjectName ?? "--"),
-                ("最高项目 Token", UsageNumberFormatter.tokenCompactCount(stats.highestTokenProjectValue))
+                (AppText.text("Projects", "项目数"), "\(stats.projectCount)"),
+                (AppText.text("Top Token Project", "Token 最高项目"), stats.highestTokenProjectName ?? "--"),
+                (AppText.text("Highest Project Tokens", "最高项目 Token"), UsageNumberFormatter.tokenCompactCount(stats.highestTokenProjectValue))
             ])
         }
     }
@@ -1160,7 +1163,7 @@ enum AnalyticsDateFormatter {
 
     static func preciseLabel(for date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.locale = AppText.locale
         formatter.dateFormat = "M/d HH:mm"
         return formatter.string(from: date)
     }
@@ -1170,15 +1173,15 @@ enum AnalyticsChartPalette {
     static func color(for key: String) -> Color {
         let normalized = key.trimmingCharacters(in: .whitespacesAndNewlines)
         switch normalized {
-        case "输入":
+        case "输入", "Input":
             return Color(hex: "#79D0FF")
-        case "输出":
+        case "输出", "Output":
             return Color(hex: "#7DE6AA")
-        case "推理":
+        case "推理", "Reasoning":
             return Color(hex: "#FFD36E")
-        case "搜索任务":
+        case "搜索任务", "Search Sessions":
             return Color(hex: "#B79CFF")
-        case "非搜索任务":
+        case "非搜索任务", "Non-search Sessions":
             return Color(hex: "#7AD6FF")
         default:
             break

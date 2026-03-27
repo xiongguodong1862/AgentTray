@@ -4,7 +4,7 @@ import SQLite3
 
 final class AgentAnalyticsTests: XCTestCase {
     func testAnalyticsRangeAndTabDefinitionsMatchSpec() {
-        XCTAssertEqual(AnalyticsRange.allCases.map(\.title), ["今日", "本周", "本月"])
+        XCTAssertEqual(AnalyticsRange.allCases.map(\.title), ["Today", "This Week", "This Month"])
         XCTAssertTrue(AnalyticsRange.today.usesHourlyBuckets)
         XCTAssertFalse(AnalyticsRange.week.usesHourlyBuckets)
         XCTAssertEqual(AgentAnalyticsTab.tabs(for: .codex), [.activity, .sessions, .tokens, .tools, .changes, .limits])

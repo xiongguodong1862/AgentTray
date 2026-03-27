@@ -10,6 +10,9 @@ public struct CodexEnvironmentInfo: Equatable, Sendable {
     public let authFileExists: Bool
 
     public var summaryLine: String {
-        "当前环境：\(environmentLabel)  ·  认证方式：\(authMethodLabel)"
+        AppText.text(
+            "Environment: \(environmentLabel)  ·  Auth: \(authMethodLabel)",
+            "当前环境：\(environmentLabel)  ·  认证方式：\(authMethodLabel)"
+        )
     }
 }

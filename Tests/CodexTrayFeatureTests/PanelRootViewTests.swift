@@ -4,7 +4,7 @@ import XCTest
 final class PanelRootViewTests: XCTestCase {
     @MainActor
     func testLoadingStatusTextOmitsTrailingEllipsis() {
-        XCTAssertEqual(PanelRootView.loadingStatusText, "数据整理中")
+        XCTAssertEqual(PanelRootView.loadingStatusText, "Loading data")
         XCTAssertFalse(PanelRootView.loadingStatusText.contains("..."))
     }
 }

@@ -10,11 +10,11 @@ public enum AnalyticsRange: String, Codable, CaseIterable, Identifiable, Sendabl
     public var title: String {
         switch self {
         case .today:
-            "今日"
+            AppText.text("Today", "今日")
         case .week:
-            "本周"
+            AppText.text("This Week", "本周")
         case .month:
-            "本月"
+            AppText.text("This Month", "本月")
         }
     }
 
@@ -40,21 +40,21 @@ public enum AgentAnalyticsTab: String, Codable, CaseIterable, Identifiable, Send
     public var title: String {
         switch self {
         case .activity:
-            "活跃趋势"
+            AppText.text("Activity", "活跃趋势")
         case .sessions:
-            "会话"
+            AppText.text("Sessions", "会话")
         case .tokens:
             "Token"
         case .tools:
-            "工具"
+            AppText.text("Tools", "工具")
         case .changes:
-            "改动"
+            AppText.text("Changes", "改动")
         case .limits:
-            "配额"
+            AppText.text("Limits", "配额")
         case .models:
-            "模型"
+            AppText.text("Models", "模型")
         case .projects:
-            "项目"
+            AppText.text("Projects", "项目")
         }
     }
 

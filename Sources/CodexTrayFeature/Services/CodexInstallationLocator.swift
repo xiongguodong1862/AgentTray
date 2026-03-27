@@ -16,7 +16,7 @@ enum CodexSurfaceKind: Equatable, Sendable {
         case .extension:
             "Extension"
         case .unknown:
-            "未知"
+            AppText.text("Unknown", "未知")
         }
     }
 
@@ -95,7 +95,7 @@ struct CodexInstallation: Equatable, Sendable {
         if auth.hasAPIKeyInAuthFile {
             return "API Key"
         }
-        return "未知"
+        return AppText.text("Unknown", "未知")
     }
 
     private static func displayPath(for url: URL) -> String {

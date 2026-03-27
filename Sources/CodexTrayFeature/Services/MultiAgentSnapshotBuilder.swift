@@ -44,11 +44,11 @@ public struct MultiAgentSnapshotBuilder: Sendable {
             agent: .codex,
             generatedAt: now,
             status: AgentStatusSummary(
-                primaryLabel: "5小时余量",
+                primaryLabel: AppText.text("5h Left", "5小时余量"),
                 primaryValue: codexSnapshot.primaryLimit?.shortLabel ?? "--",
                 primaryProgress: codexSnapshot.primaryLimit.map { $0.remainingPercent / 100 },
                 primaryResetAt: codexSnapshot.primaryLimit?.resetsAt,
-                secondaryLabel: "本周余量",
+                secondaryLabel: AppText.text("Weekly Left", "本周余量"),
                 secondaryValue: codexSnapshot.secondaryLimit?.shortLabel ?? "--",
                 secondaryProgress: codexSnapshot.secondaryLimit.map { $0.remainingPercent / 100 },
                 secondaryResetAt: codexSnapshot.secondaryLimit?.resetsAt
@@ -84,11 +84,11 @@ public struct MultiAgentSnapshotBuilder: Sendable {
             agent: .codex,
             generatedAt: now,
             status: AgentStatusSummary(
-                primaryLabel: "5小时余量",
+                primaryLabel: AppText.text("5h Left", "5小时余量"),
                 primaryValue: codexSnapshot.primaryLimit?.shortLabel ?? "--",
                 primaryProgress: codexSnapshot.primaryLimit.map { $0.remainingPercent / 100 },
                 primaryResetAt: codexSnapshot.primaryLimit?.resetsAt,
-                secondaryLabel: "本周余量",
+                secondaryLabel: AppText.text("Weekly Left", "本周余量"),
                 secondaryValue: codexSnapshot.secondaryLimit?.shortLabel ?? "--",
                 secondaryProgress: codexSnapshot.secondaryLimit.map { $0.remainingPercent / 100 },
                 secondaryResetAt: codexSnapshot.secondaryLimit?.resetsAt
@@ -246,7 +246,7 @@ public struct MultiAgentSnapshotBuilder: Sendable {
                 tokenUsage: tokenUsage,
                 toolCalls: toolCalls,
                 customActivityScore: activityScore,
-                interactionLabel: "会话",
+                interactionLabel: AppText.text("Session", "会话"),
                 sourceAgents: sourceAgents
             )
         }
@@ -399,9 +399,9 @@ struct ClaudeUsageSnapshotBuilder: Sendable {
         let today = daily.last ?? .empty(for: calendar.startOfDay(for: now))
         let totalTokenUsage = accumulators.values.reduce(0) { $0 + $1.tokenUsage }
         let status = AgentStatusSummary(
-            primaryLabel: "今日 Token",
+            primaryLabel: AppText.text("Today Tokens", "今日 Token"),
             primaryValue: CompactNumberFormatter.string(for: today.tokenUsage),
-            secondaryLabel: "累计 Token",
+            secondaryLabel: AppText.text("Total Tokens", "累计 Token"),
             secondaryValue: CompactNumberFormatter.string(for: totalTokenUsage)
         )
 
@@ -449,7 +449,7 @@ struct ClaudeUsageSnapshotBuilder: Sendable {
                 tokenUsage: accumulator.tokenUsage,
                 toolCalls: accumulator.toolCalls,
                 customActivityScore: score,
-                interactionLabel: "会话",
+                interactionLabel: AppText.text("Session", "会话"),
                 sourceAgents: score > 0 ? [AgentKind.claude.displayName] : []
             )
         }
@@ -540,9 +540,9 @@ struct GeminiUsageSnapshotBuilder: Sendable {
         let today = daily.last ?? .empty(for: calendar.startOfDay(for: now))
         let totalTokenUsage = accumulators.values.reduce(0) { $0 + $1.tokenUsage }
         let status = AgentStatusSummary(
-            primaryLabel: "今日 Token",
+            primaryLabel: AppText.text("Today Tokens", "今日 Token"),
             primaryValue: CompactNumberFormatter.string(for: today.tokenUsage),
-            secondaryLabel: "累计 Token",
+            secondaryLabel: AppText.text("Total Tokens", "累计 Token"),
             secondaryValue: CompactNumberFormatter.string(for: totalTokenUsage)
         )
 
@@ -660,7 +660,7 @@ struct GeminiUsageSnapshotBuilder: Sendable {
                 tokenUsage: accumulator.tokenUsage,
                 toolCalls: accumulator.toolCalls,
                 customActivityScore: score,
-                interactionLabel: "会话",
+                interactionLabel: AppText.text("Session", "会话"),
                 sourceAgents: score > 0 ? [AgentKind.gemini.displayName] : []
             )
         }
@@ -795,14 +795,14 @@ extension AgentSnapshot {
                 tokenUsage: 0,
                 toolCalls: 0,
                 customActivityScore: 0,
-                interactionLabel: "会话",
+                interactionLabel: AppText.text("Session", "会话"),
                 sourceAgents: []
             )
         }
         return AgentSnapshot(
             agent: agent,
             generatedAt: generatedAt,
-            status: AgentStatusSummary(primaryLabel: "状态", primaryValue: "--"),
+            status: AgentStatusSummary(primaryLabel: AppText.text("Status", "状态"), primaryValue: "--"),
             today: lastYearDays.last ?? .empty(for: startOfDay),
             lastSevenDays: Array(lastYearDays.suffix(7)),
             lastYearDays: lastYearDays,

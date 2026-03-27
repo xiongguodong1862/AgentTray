@@ -59,8 +59,8 @@ public struct CodexUsageSnapshotBuilder: Sendable {
         self.calendar = calendar
         self.petBaselineStore = petBaselineStore
         self.environmentInfo = environmentInfo ?? CodexEnvironmentInfo(
-            environmentLabel: "未知",
-            authMethodLabel: "未知",
+            environmentLabel: AppText.text("Unknown", "未知"),
+            authMethodLabel: AppText.text("Unknown", "未知"),
             codexHomePath: sessionsRoot.deletingLastPathComponent().path,
             sqliteHomePath: stateDatabaseURL.deletingLastPathComponent().path,
             authStorageLabel: "unknown",

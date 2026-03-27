@@ -275,7 +275,7 @@ final class ParsingTests: XCTestCase {
         XCTAssertEqual(store.environmentInfo, environmentInfo)
         XCTAssertEqual(
             store.environmentInfo.summaryLine,
-            "当前环境：Extension  ·  认证方式：ChatGPT OAuth"
+            "Environment: Extension  ·  Auth: ChatGPT OAuth"
         )
     }
 
