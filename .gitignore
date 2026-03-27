@@ -2,6 +2,8 @@
 /.build
 /dist
 /Packages
+.codex
+.idea
 
 # Xcode user-specific files
 xcuserdata/
