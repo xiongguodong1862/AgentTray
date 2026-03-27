@@ -9,22 +9,10 @@ final class UsageCalculatorsTests: XCTestCase {
         XCTAssertEqual(HeatmapLevelCalculator.level(for: 1000), 4)
     }
 
-    func testAgentPanelLayoutPolicyShowsProgressBarOnlyForCodex() {
-        XCTAssertTrue(AgentPanelLayoutPolicy.showsProgressBar(for: .codex))
-        XCTAssertFalse(AgentPanelLayoutPolicy.showsProgressBar(for: .claude))
-        XCTAssertFalse(AgentPanelLayoutPolicy.showsProgressBar(for: .gemini))
-    }
-
     func testAgentPanelLayoutPolicyUsesCompactStatusTitleForNonCodexAgents() {
         XCTAssertEqual(AgentPanelLayoutPolicy.statusTitle(for: .codex), "配额 / 状态")
         XCTAssertEqual(AgentPanelLayoutPolicy.statusTitle(for: .claude), "使用情况")
         XCTAssertEqual(AgentPanelLayoutPolicy.statusTitle(for: .gemini), "使用情况")
-    }
-
-    func testAgentPanelLayoutPolicyUsesDifferentTodayMetricsForClaudeAndGemini() {
-        XCTAssertEqual(AgentPanelLayoutPolicy.todayMetrics(for: .claude), [.sessions, .tokenUsage, .activeMinutes])
-        XCTAssertEqual(AgentPanelLayoutPolicy.todayMetrics(for: .gemini), [.sessions, .tokenUsage, .activeMinutes])
-        XCTAssertEqual(AgentPanelLayoutPolicy.todayMetrics(for: .codex), [.sessions, .activeMinutes, .modifiedFiles])
     }
 
     func testAgentPanelLayoutPolicyFormatsHeaderStatusWithTodayTokenForGemini() {
@@ -51,32 +39,6 @@ final class UsageCalculatorsTests: XCTestCase {
         )
 
         XCTAssertEqual(AgentPanelLayoutPolicy.headerStatusText(for: snapshot), "Token 14.3K")
-    }
-
-    func testAgentPanelLayoutPolicyFormatsAverageTokensPerSessionForGemini() {
-        let snapshot = AgentSnapshot(
-            agent: .gemini,
-            generatedAt: .now,
-            status: AgentStatusSummary(primaryLabel: "今日 Token", primaryValue: "14.3K"),
-            today: UsageMetricsDay(
-                date: .now,
-                dialogs: 4,
-                activeMinutes: 12,
-                modifiedFiles: 0,
-                addedLines: 0,
-                deletedLines: 0,
-                tokenUsage: 14_400,
-                toolCalls: 2
-            ),
-            lastSevenDays: [],
-            lastYearDays: [],
-            currentModel: "gemini-2.5-pro",
-            lastActiveAt: .now,
-            environment: AgentEnvironmentSummary(runtimeLabel: "Gemini CLI", dataSourceLabel: "~/.gemini"),
-            isAvailable: true
-        )
-
-        XCTAssertEqual(AgentPanelLayoutPolicy.averageTokensPerSessionText(for: snapshot), "3.6K")
     }
 
     func testAgentPanelLayoutPolicyFormatsRecentAverageTokensPerSessionFromLastSevenDays() {
@@ -363,12 +325,6 @@ final class UsageCalculatorsTests: XCTestCase {
         XCTAssertEqual(UsageLimitProgressStyle.progressValue(for: -10), 0, accuracy: 0.0001)
         XCTAssertEqual(UsageLimitProgressStyle.progressValue(for: 140), 1, accuracy: 0.0001)
         XCTAssertEqual(UsageLimitProgressStyle.progressValue(for: nil), 0, accuracy: 0.0001)
-    }
-
-    func testUsageDisplayFormatterFormatsNetChangeWithSign() {
-        XCTAssertEqual(UsageDisplayFormatter.netChangeLabel(for: 12), "+12")
-        XCTAssertEqual(UsageDisplayFormatter.netChangeLabel(for: 0), "0")
-        XCTAssertEqual(UsageDisplayFormatter.netChangeLabel(for: -8), "-8")
     }
 
     func testUsageDisplayFormatterFormatsHeatmapTooltipText() {

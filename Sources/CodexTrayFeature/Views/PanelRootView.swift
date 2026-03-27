@@ -371,40 +371,6 @@ struct PanelRootView: View {
         statusBlock(for: snapshot)
     }
 
-    private func usageOverviewBlock(for snapshot: AgentSnapshot) -> some View {
-        let rows = compactUsageRows(for: snapshot)
-        return VStack(alignment: .leading, spacing: 12) {
-            Text("使用情况")
-                .font(.system(size: 10, weight: .bold, design: .rounded))
-                .tracking(1.3)
-                .foregroundStyle(.white.opacity(0.42))
-
-            if rows.count == 2 {
-                HStack(alignment: .top, spacing: 14) {
-                    compactMetricCard(rows[0])
-                    compactMetricCard(rows[1])
-                }
-            } else {
-                ForEach(rows) { row in
-                    metricRowView(row)
-                }
-            }
-        }
-    }
-
-    private func todayBlock(for snapshot: AgentSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("今日")
-                .font(.system(size: 10, weight: .bold, design: .rounded))
-                .tracking(1.3)
-                .foregroundStyle(.white.opacity(0.42))
-
-            ForEach(todayRows(for: snapshot)) { row in
-                metricRowView(row)
-            }
-        }
-    }
-
     private func yearHeatmapArea(days: [UsageMetricsDay], title: String) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 10) {
@@ -523,27 +489,6 @@ struct PanelRootView: View {
         }
     }
 
-    private func compactMetricCard(_ row: MetricRow) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(row.label)
-                .font(.system(size: 11, weight: .medium, design: .rounded))
-                .foregroundStyle(.white.opacity(0.46))
-
-            Text(row.value)
-                .font(.system(size: 19, weight: .bold, design: .rounded))
-                .foregroundStyle(row.valueColor)
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(.white.opacity(0.04))
-        )
-    }
-
     private var expandedBackground: LinearGradient {
         let gradientHexes = settingsStore.settings.themeTint.gradientHexes
         return LinearGradient(
@@ -557,29 +502,6 @@ struct PanelRootView: View {
             startPoint: .top,
             endPoint: .bottom
         )
-    }
-
-    private func todayRows(for snapshot: AgentSnapshot) -> [MetricRow] {
-        AgentPanelLayoutPolicy.todayMetrics(for: snapshot.agent).map { metric in
-            metricRow(for: metric, snapshot: snapshot)
-        }
-    }
-
-    private func compactUsageRows(for snapshot: AgentSnapshot) -> [MetricRow] {
-        switch snapshot.agent {
-        case .codex:
-            return [
-                metricRow(for: .sessions, snapshot: snapshot),
-                metricRow(for: .activeMinutes, snapshot: snapshot),
-            ]
-        case .claude, .gemini:
-            return [
-                metricRow(for: .sessions, snapshot: snapshot),
-                metricRow(for: .activeMinutes, snapshot: snapshot),
-            ]
-        case .all:
-            return todayRows(for: snapshot)
-        }
     }
 
     private func statusRows(for snapshot: AgentSnapshot) -> [StatusRow] {
@@ -646,46 +568,6 @@ struct PanelRootView: View {
                     showsProgressBar: false
                 )
             ]
-        }
-    }
-
-    private func metricRow(for metric: AgentTodayMetric, snapshot: AgentSnapshot) -> MetricRow {
-        switch metric {
-        case .sessions:
-            let label = snapshot.agent == .all ? "总会话数" : (snapshot.agent == .codex ? "对话数" : "今日会话")
-            let value = snapshot.agent == .all ? "\(store.multiAgentSnapshot.todaySummary.totalSessions)" : "\(snapshot.today.dialogs)"
-            return MetricRow(label: label, value: value, valueColor: .white)
-        case .tokenUsage:
-            let label = snapshot.agent == .all ? "总 Token" : "今日 Token"
-            let value = snapshot.agent == .all
-                ? UsageNumberFormatter.compactCount(store.multiAgentSnapshot.todaySummary.totalTokenUsage)
-                : UsageNumberFormatter.compactCount(snapshot.today.tokenUsage)
-            return MetricRow(label: label, value: value, valueColor: .white)
-        case .activeMinutes:
-            let label = snapshot.agent == .all ? "总活跃时长" : "活跃时长"
-            let minutes = snapshot.agent == .all ? store.multiAgentSnapshot.todaySummary.totalActiveMinutes : snapshot.today.activeMinutes
-            return MetricRow(label: label, value: DurationFormatter.string(for: minutes), valueColor: .white)
-        case .netChange:
-            return MetricRow(
-                label: "净变更",
-                value: UsageDisplayFormatter.netChangeLabel(for: snapshot.today.netLines),
-                valueColor: .white
-            )
-        case .modifiedFiles:
-            return MetricRow(
-                label: "改动文件",
-                value: "\(snapshot.today.modifiedFiles)",
-                valueColor: .white
-            )
-        case .toolCalls:
-            let value = snapshot.agent == .all ? "\(store.multiAgentSnapshot.todaySummary.totalToolCalls)" : "\(snapshot.today.toolCalls)"
-            return MetricRow(label: "工具调用", value: value, valueColor: .white)
-        case .avgTokensPerSession:
-            return MetricRow(
-                label: "平均会话 Token",
-                value: AgentPanelLayoutPolicy.averageTokensPerSessionText(for: snapshot),
-                valueColor: .white
-            )
         }
     }
 
@@ -976,36 +858,9 @@ struct StatusRow: Identifiable {
     let showsProgressBar: Bool
 }
 
-enum AgentTodayMetric: Equatable {
-    case sessions
-    case activeMinutes
-    case netChange
-    case modifiedFiles
-    case tokenUsage
-    case toolCalls
-    case avgTokensPerSession
-}
-
 enum AgentPanelLayoutPolicy {
     static func statusTitle(for agent: AgentKind) -> String {
         agent == .codex ? "配额 / 状态" : "使用情况"
-    }
-
-    static func showsProgressBar(for agent: AgentKind) -> Bool {
-        agent == .codex
-    }
-
-    static func todayMetrics(for agent: AgentKind) -> [AgentTodayMetric] {
-        switch agent {
-        case .codex:
-            [.sessions, .activeMinutes, .modifiedFiles]
-        case .claude:
-            [.sessions, .tokenUsage, .activeMinutes]
-        case .gemini:
-            [.sessions, .tokenUsage, .activeMinutes]
-        case .all:
-            [.sessions, .activeMinutes, .tokenUsage]
-        }
     }
 
     static func headerStatusText(for snapshot: AgentSnapshot) -> String {
@@ -1017,12 +872,6 @@ enum AgentPanelLayoutPolicy {
             return "Token \(UsageNumberFormatter.compactCount(snapshot.today.tokenUsage))"
         }
         return "\(snapshot.status.primaryLabel) \(snapshot.status.primaryValue)"
-    }
-
-    static func averageTokensPerSessionText(for snapshot: AgentSnapshot) -> String {
-        guard snapshot.today.dialogs > 0 else { return "--" }
-        let average = snapshot.today.tokenUsage / max(1, snapshot.today.dialogs)
-        return UsageNumberFormatter.compactCount(average)
     }
 
     static func recentAverageTokensPerSessionText(for snapshot: AgentSnapshot) -> String {
@@ -1056,13 +905,6 @@ enum UsageNumberFormatter {
 }
 
 enum UsageDisplayFormatter {
-    static func netChangeLabel(for netLines: Int) -> String {
-        if netLines > 0 {
-            return "+\(netLines)"
-        }
-        return "\(netLines)"
-    }
-
     static func heatmapTooltipText(
         for day: UsageMetricsDay,
         dateFormatter: DateFormatter,
