@@ -14,11 +14,11 @@ enum AgentAnalyticsLayout {
 
         switch agent {
         case .codex:
-            return 728
+            return activityPanelHeight(agent: agent, monthBaseline: 728, range: activityRange)
         case .claude:
-            return 688
+            return activityPanelHeight(agent: agent, monthBaseline: 688, range: activityRange)
         case .gemini:
-            return 736
+            return activityPanelHeight(agent: agent, monthBaseline: 736, range: activityRange)
         case .all:
             if tab == .activity {
                 let activityHeight = ScreenLayout.panelHeight(for: activityRange, agent: agent)
@@ -51,6 +51,10 @@ enum AgentAnalyticsLayout {
     }
 
     private static let analyticsFallbackHeight: CGFloat = 676
+
+    private static func activityPanelHeight(agent: AgentKind, monthBaseline: CGFloat, range: HeatmapRange) -> CGFloat {
+        monthBaseline + (ScreenLayout.panelHeight(for: range, agent: agent) - ScreenLayout.panelHeight(for: .month, agent: agent))
+    }
 }
 
 struct AgentAnalyticsSectionView: View {

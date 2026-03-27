@@ -29,7 +29,7 @@ final class AgentAnalyticsTests: XCTestCase {
             agent: .claude,
             tab: .activity,
             analyticsRange: .today,
-            activityRange: .year
+            activityRange: .month
         )
         let claudeTools = AgentAnalyticsLayout.preferredPanelHeight(
             agent: .claude,
@@ -40,6 +40,32 @@ final class AgentAnalyticsTests: XCTestCase {
 
         XCTAssertLessThan(codexLimits, codexActivity)
         XCTAssertLessThan(claudeTools, claudeActivity)
+    }
+
+    func testSingleAgentActivityPanelHeightTracksHeatmapRange() {
+        let codexWeek = AgentAnalyticsLayout.preferredPanelHeight(
+            agent: .codex,
+            tab: .activity,
+            analyticsRange: .today,
+            activityRange: .week
+        )
+        let codexMonth = AgentAnalyticsLayout.preferredPanelHeight(
+            agent: .codex,
+            tab: .activity,
+            analyticsRange: .today,
+            activityRange: .month
+        )
+        let codexYear = AgentAnalyticsLayout.preferredPanelHeight(
+            agent: .codex,
+            tab: .activity,
+            analyticsRange: .today,
+            activityRange: .year
+        )
+
+        XCTAssertEqual(codexMonth, 728)
+        XCTAssertLessThan(codexWeek, codexMonth)
+        XCTAssertLessThan(codexYear, codexMonth)
+        XCTAssertNotEqual(codexWeek, codexYear)
     }
 
     func testTokenPanelKeepsMoreHeightThanOtherCompactTabs() {
